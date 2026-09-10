@@ -1,3 +1,9 @@
+# ==============================================================================
+# 🟣 [Step 6 - 보라점] 단위 테스트 & 품질 검증 계층
+# • 역할: YouTube Data API 검색 및 자막 추출을 Mocking하여 1초 내에 통과하는 단위 테스트를 작성합니다.
+# • 실행 명령: pytest tests/modules/test_yt_search.py -v
+# ==============================================================================
+
 import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.yt_search.module import YouTubeSearchModule

@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # Core LLM
     OPENAI_API_KEY: Optional[str] = None
-    MODEL_NAME: str = "gpt-4o-mini"
+    MODEL_NAME: str = "gpt-5-luna"
     TEMPERATURE: float = 0.0
 
     # YouTube API (Worker 1, 2)
@@ -19,5 +19,10 @@ class Settings(BaseSettings):
     # Naver API (Worker 3, 4)
     NAVER_CLIENT_ID: Optional[str] = None
     NAVER_CLIENT_SECRET: Optional[str] = None
+
+    # Instagram Graph API
+    INSTAGRAM_ACCESS_TOKEN: Optional[str] = None
+    INSTAGRAM_USER_ID: Optional[str] = None
+    INSTAGRAM_API_VERSION: str = "v26.0"
 
 settings = Settings()

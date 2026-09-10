@@ -1,3 +1,9 @@
+# ==============================================================================
+# 🟣 [Step 6 - 보라점] 단위 테스트 & 품질 검증 계층
+# • 역할: 네이버 쇼핑 및 데이터랩 API 응답을 Mocking하여 1초 내에 통과하는 단위 테스트를 작성합니다.
+# • 실행 명령: pytest tests/modules/test_naver_shopping.py -v
+# ==============================================================================
+
 import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.naver_shopping.module import NaverShoppingModule

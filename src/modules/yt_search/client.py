@@ -1,3 +1,9 @@
+# ==============================================================================
+# 🔴 [Step 1 - 빨간점] 외부 API 통신 클라이언트 계층
+# • 역할: YouTube Data API v3 영상 검색 클라이언트를 작성합니다.
+# ➔ 다음 단계: 🟠 [Step 2] guardrails.py 로 이동하여 max_results 제한 등 가드레일을 작성하세요.
+# ==============================================================================
+
 import requests
 from typing import Any, Dict
 from src.config import settings

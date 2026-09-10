@@ -1,3 +1,10 @@
+# ==============================================================================
+# 🟣 [Step 6 - 보라점] 단위 테스트 & 품질 검증 계층
+# • 역할: 외부 API를 100% Mocking하여 네트워크 연결이나 API 키 없이도 1초 내에 통과하는 단위 테스트를 작성합니다.
+# • 검증 항목: 모듈 메타데이터, 도구 정상/예외 응답, 가드레일 통과/차단/정제, 컨텍스트 스니펫
+# • 실행 명령: pytest tests/modules/test_naver_search.py -v
+# ==============================================================================
+
 import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.naver_search.module import NaverSearchModule

@@ -1,3 +1,9 @@
+# ==============================================================================
+# 🟠 [Step 2 - 주황점] 가드레일 & 데이터 정제 계층
+# • 역할: max_comments 검증(validate_tool_args) 및 댓글 내 개인정보/이메일 마스킹(sanitize_output)을 작성합니다.
+# ➔ 다음 단계: 🟡 [Step 3] tools.py 로 이동하여 통계/댓글 도구를 정의하세요.
+# ==============================================================================
+
 import re
 from typing import Any, Dict
 from src.core.base import BaseGuardrail, GuardrailResult
