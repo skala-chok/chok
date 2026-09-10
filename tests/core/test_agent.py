@@ -138,6 +138,9 @@ def test_agent_runner_default_llm_initialization():
 
 def test_agent_builder_alias():
     assert AgentBuilder is AgentRunner
+    from src.core import AgentRunner as CoreAgentRunner, AgentBuilder as CoreAgentBuilder
+    assert CoreAgentRunner is AgentRunner
+    assert CoreAgentBuilder is AgentBuilder
 
 
 def test_mock_llm_fixture(mock_llm):

@@ -6,7 +6,13 @@ from src.core.base import BaseGuardrail, GuardrailResult
 class YouTubeAnalyticsGuardrail(BaseGuardrail):
     def validate_tool_args(self, tool_name: str, args: Dict[str, Any]) -> GuardrailResult:
         if tool_name == "get_video_comments":
-            max_c = args.get("max_comments", 10)
+            max_c = args.get("max_comments")
+            if max_c is None:
+                max_c = 10
+            try:
+                max_c = int(max_c)
+            except (ValueError, TypeError):
+                return GuardrailResult(passed=False, error_message="max_comments는 정수형이어야 합니다.")
             if max_c > 50 or max_c < 1:
                 return GuardrailResult(passed=False, error_message="max_comments는 1 이상 50 이하여야 합니다.")
         elif tool_name == "get_channel_stats":

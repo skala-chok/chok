@@ -10,7 +10,13 @@ class YouTubeSearchGuardrail(BaseGuardrail):
 
     def validate_tool_args(self, tool_name: str, args: Dict[str, Any]) -> GuardrailResult:
         if tool_name == "search_youtube_videos":
-            max_r = args.get("max_results", 5)
+            max_r = args.get("max_results")
+            if max_r is None:
+                max_r = 5
+            try:
+                max_r = int(max_r)
+            except (ValueError, TypeError):
+                return GuardrailResult(passed=False, error_message="max_results는 정수형이어야 합니다.")
             if max_r > 10 or max_r < 1:
                 return GuardrailResult(passed=False, error_message="max_results는 최소 1개, 최대 10개까지 가능합니다.")
         elif tool_name == "get_video_transcript":

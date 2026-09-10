@@ -62,6 +62,15 @@ def test_yt_analytics_guardrail_tool_args_validation():
     assert res_too_small.passed is False
     assert "1 이상" in res_too_small.error_message
 
+    # max_comments None check (defaults to 10 without TypeError)
+    res_none = guard.validate_tool_args("get_video_comments", {"video_id": "vid1", "max_comments": None})
+    assert res_none.passed is True
+
+    # max_comments non-integer rejection
+    res_invalid = guard.validate_tool_args("get_video_comments", {"video_id": "vid1", "max_comments": "abc"})
+    assert res_invalid.passed is False
+    assert "정수형이어야 합니다" in res_invalid.error_message
+
     # get_channel_stats: channel_id validation
     assert guard.validate_tool_args("get_channel_stats", {"channel_id": "UC12345"}).passed is True
 

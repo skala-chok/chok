@@ -79,6 +79,15 @@ def test_yt_search_guardrail_tool_args_validation():
     assert guard.validate_tool_args("search_youtube_videos", {"max_results": 5}).passed is True
     assert guard.validate_tool_args("search_youtube_videos", {}).passed is True
 
+    # max_results None check (defaults to 5 without TypeError)
+    res_none = guard.validate_tool_args("search_youtube_videos", {"max_results": None})
+    assert res_none.passed is True
+
+    # max_results non-integer rejection
+    res_invalid = guard.validate_tool_args("search_youtube_videos", {"max_results": "abc"})
+    assert res_invalid.passed is False
+    assert "정수형이어야 합니다" in res_invalid.error_message
+
     # video_id validation for get_video_transcript
     res_invalid_vid = guard.validate_tool_args("get_video_transcript", {"video_id": ""})
     assert res_invalid_vid.passed is False

@@ -7,6 +7,7 @@ from src.core.base import (
 )
 from src.core.guardrails import wrap_tool_with_guardrails
 from src.core.registry import ModuleRegistry
+from src.core.agent import AgentRunner, AgentBuilder
 
 __all__ = [
     "GuardrailResult",
@@ -15,5 +16,7 @@ __all__ = [
     "BaseAgentModule",
     "wrap_tool_with_guardrails",
     "ModuleRegistry",
+    "AgentRunner",
+    "AgentBuilder",
 ]
 
