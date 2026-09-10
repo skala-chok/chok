@@ -61,6 +61,7 @@ flowchart TD
 
 ```text
 skala-chok/
+├── app.py                           # 🤖 Streamlit 대화형 테스트 대시보드
 ├── .env.example                     # 환경변수 템플릿
 ├── requirements.txt                 # 전체 의존성 목록
 ├── pytest.ini                       # Pytest 실행 설정
@@ -123,6 +124,29 @@ pip install -r requirements.txt
 cp .env.example .env
 # .env 파일을 열어 OPENAI_API_KEY, YOUTUBE_API_KEY, NAVER_CLIENT_ID 등을 입력합니다.
 ```
+
+---
+
+## 🌐 Streamlit 대화형 테스트 대시보드 (`app.py`)
+
+개발한 커스텀 도구(@tool), 가드레일, 비즈니스 시나리오(Scenario), 통합 에이전트 라우팅을 웹 UI에서 시각적으로 테스트하고 검증할 수 있는 대화형 대시보드를 제공합니다.
+
+```bash
+# Streamlit 웹 대시보드 실행
+streamlit run app.py
+```
+
+### 🌟 주요 기능
+1. **🛠️ 단일 툴 테스트 (Tool Playground)**:
+   - 등록된 모든 도구(`yt_search`, `yt_analytics`, `naver_search`, `naver_shopping`)를 선택하고 파라미터를 입력하여 실시간 호출 및 가드레일 입력/출력 검증
+2. **🎬 복합 시나리오 테스트 (Scenario Playground)**:
+   - Pydantic 스키마(`CrossPlatformTrendParams`) 기반 입력 폼 동적 렌더링
+   - 필수 도구 체이닝 및 LLM 종합 크로스 분석 리포트 생성
+3. **💬 통합 에이전트 대화 (Agent & Router)**:
+   - 자연어 입력 시 라우터의 의도 분류 및 시나리오 자동 매칭/ReAct 폴백 과정 시각화
+   - 원클릭 퀵 테스트 질문 및 가드레일 차단 테스트 제공
+4. **🎭 Mock 모드 지원**:
+   - 외부 API 키가 없거나 쿼터를 아끼고 싶을 때 사이드바의 **Mock 데이터 모드**를 켜면 즉시 모의 데이터로 전체 파이프라인 검증 가능
 
 ---
 
