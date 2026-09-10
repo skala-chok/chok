@@ -1,8 +1,8 @@
 # 📘 [Study] Chapter 1: Introduction - AI Application 패러다임과 AI Agent 거버넌스
 
 > **교재 범위**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (p. 5 ~ p. 28)  
-> **상위 문서**: [[Index] 마스터 위키 로드맵](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)  
-> **관련 프로젝트 파일**: [`src/core/base.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py), [`src/core/guardrails.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py)
+> **상위 문서**: [[Index] 마스터 위키 로드맵](Index.md)  
+> **관련 프로젝트 파일**: [`src/core/base.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/base.py), [`src/core/guardrails.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/guardrails.py)
 
 ---
 
@@ -145,11 +145,11 @@ AI 에이전트가 현실 세계와 연결되면서 단순 소프트웨어 버�
 
 ## 🔗 7. 프로젝트(skala-chok) 아키텍처 연계 분석
 
-본 프로젝트([`skala-chok`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/README.md))의 코어 레이어는 Chapter 1에서 요구하는 엔터프라이즈 거버넌스 원칙을 코드 레벨에서 직접 구현하고 있습니다:
+본 프로젝트([`skala-chok`](https://github.com/DevDAN09/skala-chok/blob/main/README.md))의 코어 레이어는 Chapter 1에서 요구하는 엔터프라이즈 거버넌스 원칙을 코드 레벨에서 직접 구현하고 있습니다:
 
-1. **[`src/core/base.py:BaseGuardrail`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py)**:
+1. **[`src/core/base.py:BaseGuardrail`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/base.py)**:
    - `validate_input()`: 사용자 입력이 에이전트 두뇌에 도달하기 전 프롬프트 인젝션과 악의적 키워드를 차단 (체크리스트 #2)
    - `validate_tool_args()`: 도구가 허용된 파라미터 범위를 벗어나지 않도록 권한을 제어 (체크리스트 #3)
    - `sanitize_output()`: 외부 API 응답에서 개인정보(PII)와 위험 HTML을 마스킹하여 반환 (체크리스트 #6)
-2. **[`src/core/agent.py:AgentRunner`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py)**:
+2. **[`src/core/agent.py:AgentRunner`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/agent.py)**:
    - 사용자 질의 인입 시 1차 가드레일 $\rightarrow$ 시나리오 라우팅 $\rightarrow$ 도구 실행 $\rightarrow$ 사후 정제로 이어지는 전 과정을 투명하게 `logging`으로 기록하여 감사 로그(Audit Trail) 확보 (체크리스트 #5, #7)

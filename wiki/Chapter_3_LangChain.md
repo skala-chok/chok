@@ -1,8 +1,8 @@
 # 📘 [Study] Chapter 3: LangChain - 핵심 컴포넌트, LCEL 파이프라인 및 Tool Calling
 
 > **교재 범위**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (p. 65 ~ p. 100)  
-> **상위 문서**: [[Index] 마스터 위키 로드맵](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)  
-> **관련 프로젝트 파일**: [`src/core/router.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/router.py), [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py), [`src/modules/*/tools.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/modules/naver_search/tools.py)
+> **상위 문서**: [[Index] 마스터 위키 로드맵](Index.md)  
+> **관련 프로젝트 파일**: [`src/core/router.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/router.py), [`src/core/agent.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/agent.py), [`src/modules/*/tools.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/modules/naver_search/tools.py)
 
 ---
 
@@ -186,9 +186,9 @@ print(ai_msg.tool_calls)
 
 ## 🔗 6. 프로젝트(skala-chok) 아키텍처 연계 분석
 
-- **[`src/core/router.py:ScenarioRouter`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/router.py)**:
+- **[`src/core/router.py:ScenarioRouter`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/router.py)**:
   - 교재 3장의 `with_structured_output` 및 LCEL 파이프라인(`chain = prompt | structured_llm`)을 그대로 적용하여, 사용자 질의로부터 시나리오명과 파라미터를 JSON으로 완벽하게 파싱합니다.
-- **[`src/modules/*/tools.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/modules/naver_search/tools.py)**:
+- **[`src/modules/*/tools.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/modules/naver_search/tools.py)**:
   - 4개 모듈의 모든 도구(`search_naver_blog`, `search_youtube_videos` 등)가 4대 수칙(Docstring, Type Hint, `@tool`)을 100% 준수하여 구현되어 있습니다.
-- **[`src/core/registry.py:ModuleRegistry`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/registry.py)**:
+- **[`src/core/registry.py:ModuleRegistry`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/registry.py)**:
   - 개별 도메인 워커들이 분리된 파일에서 작성한 `@tool`들을 동적으로 수집하여 중앙 에이전트의 `model.bind_tools()`에 주입하는 플러그인 아키텍처를 완성했습니다.

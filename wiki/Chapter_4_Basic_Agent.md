@@ -1,8 +1,8 @@
 # 📘 [Study] Chapter 4: Basic Agent - 도구 바인딩, 단기 메모리(Checkpointer)와 구조화된 출력
 
 > **교재 범위**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (p. 101 ~ p. 132)  
-> **상위 문서**: [[Index] 마스터 위키 로드맵](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)  
-> **관련 프로젝트 파일**: [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py), [`tests/core/test_agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/core/test_agent.py)
+> **상위 문서**: [[Index] 마스터 위키 로드맵](Index.md)  
+> **관련 프로젝트 파일**: [`src/core/agent.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/agent.py), [`tests/core/test_agent.py`](https://github.com/DevDAN09/skala-chok/blob/main/tests/core/test_agent.py)
 
 ---
 
@@ -135,9 +135,9 @@ agent_security = create_agent(
 ## 🔗 5. 프로젝트(skala-chok) 아키텍처 연계 및 향후 개선 과제
 
 ### 1) 본 프로젝트의 구현 반영 사항
-- **[`src/core/agent.py:AgentRunner`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py)**:
+- **[`src/core/agent.py:AgentRunner`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/agent.py)**:
   - Agent 7단계 라이프사이클을 완벽하게 수용하여 도구 호출 루프와 최종 답변 생성을 분리 로깅하도록 구현되었습니다.
-- **[`tests/modules/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/modules/) 100% Mocking 테스트 스위트**:
+- **[`tests/modules/`](https://github.com/DevDAN09/skala-chok/tree/main/tests/modules/) 100% Mocking 테스트 스위트**:
   - 교재 4장의 에뮬레이터/모킹 철학을 극대화하여 외부 API 호출 없이 126개의 모든 테스트를 4초 이내에 통과하도록 설계되었습니다.
 
 ### 2) 향후 권장 개선 과제 (P1 로드맵)

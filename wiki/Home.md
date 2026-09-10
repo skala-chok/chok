@@ -1,4 +1,4 @@
-# 📚 [Index] 생성형 AI 서비스 개발 교재 마스터 위키 & 아키텍처 로드맵
+# 📚 [Home] 생성형 AI 서비스 개발 교재 마스터 위키 & 아키텍처 로드맵
 
 > **교재**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (총 172페이지)  
 > **시스템**: LangChain Multi-Worker & Model-Driven Scenario Agent (`skala-chok`)  

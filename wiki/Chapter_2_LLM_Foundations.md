@@ -1,8 +1,8 @@
 # 📘 [Study] Chapter 2: LLM과 친해지기 - 오픈소스·상용 파운데이션 모델 활용과 API 제어
 
 > **교재 범위**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (p. 29 ~ p. 64)  
-> **상위 문서**: [[Index] 마스터 위키 로드맵](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)  
-> **관련 프로젝트 파일**: [`src/config.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/config.py), [`tests/modules/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/modules/)
+> **상위 문서**: [[Index] 마스터 위키 로드맵](Index.md)  
+> **관련 프로젝트 파일**: [`src/config.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/config.py), [`tests/modules/`](https://github.com/DevDAN09/skala-chok/tree/main/tests/modules/)
 
 ---
 
@@ -172,7 +172,7 @@ with open("system_alert.mp3", "wb") as f:
 
 ## 🔗 7. 프로젝트(skala-chok) 아키텍처 연계 분석
 
-- **[`src/config.py:Settings`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/config.py)**:
+- **[`src/config.py:Settings`](https://github.com/DevDAN09/skala-chok/blob/main/src/config.py)**:
   - `MODEL_NAME`, `OPENAI_API_KEY` 등을 Pydantic `BaseSettings`로 일원화하여, 코드 수정 없이 환경변수만으로 모델과 공급자를 교체할 수 있도록 설계되었습니다.
-- **[`tests/modules/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/modules/) 격리 테스트**:
+- **[`tests/modules/`](https://github.com/DevDAN09/skala-chok/tree/main/tests/modules/) 격리 테스트**:
   - Chapter 2의 가상 테스트 원칙에 따라 `unittest.mock`을 통해 외부 OpenAI/YouTube/Naver API 호출을 100% 모킹하여, 쿼터 소모 없이 4초 이내에 126개 테스트가 완결되도록 구축되었습니다.

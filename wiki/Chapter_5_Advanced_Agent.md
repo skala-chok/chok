@@ -1,8 +1,8 @@
 # 📘 [Study] Chapter 5: Advanced Agent - 런타임 상태 제어, 미들웨어, 가드레일 및 장기 메모리
 
 > **교재 범위**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (p. 133 ~ p. 172)  
-> **상위 문서**: [[Index] 마스터 위키 로드맵](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)  
-> **관련 프로젝트 파일**: [`src/core/base.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py), [`src/core/guardrails.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py)
+> **상위 문서**: [[Index] 마스터 위키 로드맵](Index.md)  
+> **관련 프로젝트 파일**: [`src/core/base.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/base.py), [`src/core/guardrails.py`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/guardrails.py)
 
 ---
 
@@ -160,12 +160,12 @@ def load_user_preferences(category: str, runtime) -> str:
 
 본 프로젝트는 Chapter 5에서 학습한 엔터프라이즈 미들웨어 및 다계층 가드레일 철학을 그대로 코드에 구현해 두었습니다:
 
-1. **[`src/core/base.py:BaseGuardrail`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py)**:
+1. **[`src/core/base.py:BaseGuardrail`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/base.py)**:
    - 교재 5장의 3대 방어선을 각각 `validate_input`(1차), `validate_tool_args`(2차), `sanitize_output`(3차) 인터페이스로 표준화.
-2. **[`src/core/guardrails.py:GuardrailedTool`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py)**:
+2. **[`src/core/guardrails.py:GuardrailedTool`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/guardrails.py)**:
    - 도구를 감싸는 `@wrap_tool_call` 데코레이터 패턴을 객체 지향적 래퍼 클래스로 구현.
    - 도구 실행 전 인자 유효성 검증과 실행 후 PII 마스킹/HTML 태그 제거를 자동으로 체이닝.
-3. **[`src/core/base.py:BaseContextProvider`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py)**:
+3. **[`src/core/base.py:BaseContextProvider`](https://github.com/DevDAN09/skala-chok/blob/main/src/core/base.py)**:
    - 도메인별 작업자(Worker)가 각자의 도구 사용법과 배경지식을 동적으로 중앙 시스템 프롬프트에 주입하는 컨텍스트 엔지니어링 구현.
 4. **향후 고도화 과제 (P4 로드맵)**:
    - 사용자별 관심 키워드와 트렌드 검색 선호도를 장기 보존할 수 있도록 `src/core/memory.py`에 Store 기반 사용자 프로필 관리 시스템 도입 예정.

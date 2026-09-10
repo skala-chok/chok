@@ -1,5 +1,6 @@
 ### 📚 skala-chok 위키
 
+- **[Home (마스터 로드맵)](Home.md)**
 - **[Index (마스터 로드맵)](Index.md)**
 - **[Study 허브](Study.md)**
 
@@ -25,7 +26,7 @@
 ---
 
 ### 🔗 소스 코드 바로가기
-- **[프로젝트 README](../README.md)**
-- **[Core 레이어](../src/core/)**
-- **[Modules 레이어](../src/modules/)**
-- **[Scenarios 레이어](../src/scenarios/)**
+- **[프로젝트 README](https://github.com/DevDAN09/skala-chok/blob/main/README.md)**
+- **[Core 레이어](https://github.com/DevDAN09/skala-chok/tree/main/src/core)**
+- **[Modules 레이어](https://github.com/DevDAN09/skala-chok/tree/main/src/modules)**
+- **[Scenarios 레이어](https://github.com/DevDAN09/skala-chok/tree/main/src/scenarios)**
