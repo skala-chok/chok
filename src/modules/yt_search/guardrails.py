@@ -1,0 +1,23 @@
+from typing import Any, Dict
+from src.core.base import BaseGuardrail, GuardrailResult
+
+
+class YouTubeSearchGuardrail(BaseGuardrail):
+    def validate_input(self, query: str) -> GuardrailResult:
+        if not query or not query.strip():
+            return GuardrailResult(passed=False, error_message="검색 쿼리가 비어 있습니다.")
+        return GuardrailResult(passed=True)
+
+    def validate_tool_args(self, tool_name: str, args: Dict[str, Any]) -> GuardrailResult:
+        if tool_name == "search_youtube_videos":
+            max_r = args.get("max_results", 5)
+            if max_r > 10 or max_r < 1:
+                return GuardrailResult(passed=False, error_message="max_results는 최소 1개, 최대 10개까지 가능합니다.")
+        elif tool_name == "get_video_transcript":
+            vid = args.get("video_id", "")
+            if not vid or len(vid) < 3:
+                return GuardrailResult(passed=False, error_message="유효하지 않은 YouTube video_id입니다.")
+        return GuardrailResult(passed=True)
+
+    def sanitize_output(self, tool_name: str, output: Any) -> Any:
+        return output
