@@ -1,8 +1,11 @@
 import importlib
 import inspect
+import logging
 import pkgutil
 from typing import Dict, List, Optional
 from .base import BaseAgentModule
+
+logger = logging.getLogger(__name__)
 
 
 class ModuleRegistry:
@@ -59,7 +62,8 @@ class ModuleRegistry:
         """
         try:
             pkg = importlib.import_module(package_path)
-        except ImportError:
+        except Exception as e:
+            logger.warning("Failed to import root package %s: %s", package_path, e)
             return
 
         if not hasattr(pkg, "__path__"):
@@ -69,38 +73,64 @@ class ModuleRegistry:
             sub_mod = None
             if is_pkg:
                 # Per project architecture, workers implement BaseAgentModule in <pkg>.<name>.module
+                primary_target = f"{package_path}.{mod_name}.module"
                 try:
-                    sub_mod = importlib.import_module(
-                        f"{package_path}.{mod_name}.module"
-                    )
-                except ImportError:
+                    sub_mod = importlib.import_module(primary_target)
+                except Exception as e_primary:
+                    fallback_target = f"{package_path}.{mod_name}"
                     try:
-                        sub_mod = importlib.import_module(
-                            f"{package_path}.{mod_name}"
+                        sub_mod = importlib.import_module(fallback_target)
+                    except Exception as e_fallback:
+                        logger.warning(
+                            "Failed to import module package %s (tried %s: %s, %s: %s)",
+                            mod_name,
+                            primary_target,
+                            e_primary,
+                            fallback_target,
+                            e_fallback,
                         )
-                    except ImportError:
                         continue
             else:
+                target = f"{package_path}.{mod_name}"
                 try:
-                    sub_mod = importlib.import_module(
-                        f"{package_path}.{mod_name}"
-                    )
-                except ImportError:
+                    sub_mod = importlib.import_module(target)
+                except Exception as e:
+                    logger.warning("Failed to import module %s: %s", target, e)
                     continue
 
             if sub_mod is None:
                 continue
 
-            for attr_name in dir(sub_mod):
-                attr = getattr(sub_mod, attr_name)
-                if (
-                    inspect.isclass(attr)
-                    and issubclass(attr, BaseAgentModule)
-                    and attr is not BaseAgentModule
-                    and not inspect.isabstract(attr)
-                ):
+            try:
+                for attr_name in dir(sub_mod):
                     try:
-                        instance = attr()
-                        self.register(instance)
+                        attr = getattr(sub_mod, attr_name)
                     except Exception:
                         continue
+
+                    if (
+                        inspect.isclass(attr)
+                        and issubclass(attr, BaseAgentModule)
+                        and attr is not BaseAgentModule
+                        and not inspect.isabstract(attr)
+                        and getattr(attr, "__module__", None) == sub_mod.__name__
+                    ):
+                        try:
+                            instance = attr()
+                            self.register(instance)
+                        except Exception as e_inst:
+                            logger.warning(
+                                "Failed to instantiate module class %s in %s: %s",
+                                attr_name,
+                                sub_mod.__name__,
+                                e_inst,
+                            )
+                            continue
+            except Exception as e_scan:
+                logger.warning(
+                    "Failed to scan attributes of module %s: %s",
+                    sub_mod.__name__,
+                    e_scan,
+                )
+                continue
+

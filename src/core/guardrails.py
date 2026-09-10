@@ -21,8 +21,15 @@ def wrap_tool_with_guardrails(
     original_func = getattr(tool, "func", None)
     original_coroutine = getattr(tool, "coroutine", None)
 
-    # Check if tool has synchronous capability
-    has_sync = original_func is not None or type(tool)._run is not BaseTool._run
+    # Check sync and async capability
+    if isinstance(tool, StructuredTool):
+        has_sync = tool.func is not None
+        has_async = tool.coroutine is not None
+    else:
+        has_sync = original_func is not None or type(tool)._run is not BaseTool._run
+        has_async = (
+            original_coroutine is not None or type(tool)._arun is not BaseTool._arun
+        )
 
     def guarded_func(**kwargs: Any) -> Any:
         # 1. Pre-execution argument validation
@@ -44,12 +51,8 @@ def wrap_tool_with_guardrails(
 
         return sanitized_output
 
-    # Check if tool has asynchronous capability
-    has_async = (
-        original_coroutine is not None or type(tool)._arun is not BaseTool._arun
-    )
-
     async def guarded_coroutine(**kwargs: Any) -> Any:
+
         # 1. Pre-execution argument validation
         for guardrail in guardrails:
             val_result = guardrail.validate_tool_args(tool.name, kwargs)

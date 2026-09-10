@@ -290,3 +290,101 @@ def test_module_registry_helpers():
     assert len(registry) == 0
     assert "dummy" not in registry
 
+
+def test_guardrailed_tool_structured_tool_sync_and_async_distinction():
+    @tool
+    def sync_tool(x: int) -> int:
+        """Sync tool"""
+        return x * 2
+
+    @tool
+    async def async_tool(x: int) -> int:
+        """Async tool"""
+        return x * 2
+
+    wrapped_sync = wrap_tool_with_guardrails(sync_tool, [PositiveOnlyGuardrail()])
+    assert wrapped_sync.func is not None
+    assert wrapped_sync.coroutine is None
+
+    wrapped_async = wrap_tool_with_guardrails(async_tool, [PositiveOnlyGuardrail()])
+    assert wrapped_async.func is None
+    assert wrapped_async.coroutine is not None
+
+
+def test_module_registry_discover_modules_broken_and_imported_classes(
+    tmp_path, monkeypatch, caplog
+):
+    import logging
+
+    pkg_dir = tmp_path / "mixed_modules"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
+
+    # 1. Broken module with syntax error
+    broken_dir = pkg_dir / "broken_mod"
+    broken_dir.mkdir()
+    (broken_dir / "__init__.py").write_text("", encoding="utf-8")
+    (broken_dir / "module.py").write_text("def broken( syntax_error: : :", encoding="utf-8")
+
+    # 2. External module
+    ext_dir = pkg_dir / "external_mod"
+    ext_dir.mkdir()
+    (ext_dir / "__init__.py").write_text("", encoding="utf-8")
+    (ext_dir / "module.py").write_text(
+        """
+from src.core.base import BaseAgentModule, BaseContextProvider
+
+class ExternalModule(BaseAgentModule):
+    @property
+    def name(self): return "external"
+    @property
+    def description(self): return "external"
+    def is_enabled(self): return True
+    def get_tools(self): return []
+    def get_guardrails(self): return []
+    def get_context_provider(self):
+        class CP(BaseContextProvider):
+            def get_system_prompt_snippet(self): return ""
+        return CP()
+""",
+        encoding="utf-8",
+    )
+
+    # 3. Good module that imports ExternalModule from external_mod
+    good_dir = pkg_dir / "good_mod"
+    good_dir.mkdir()
+    (good_dir / "__init__.py").write_text("", encoding="utf-8")
+    (good_dir / "module.py").write_text(
+        """
+from src.core.base import BaseAgentModule, BaseContextProvider
+from mixed_modules.external_mod.module import ExternalModule
+
+class GoodModule(BaseAgentModule):
+    @property
+    def name(self): return "good"
+    @property
+    def description(self): return "good"
+    def is_enabled(self): return True
+    def get_tools(self): return []
+    def get_guardrails(self): return []
+    def get_context_provider(self):
+        class CP(BaseContextProvider):
+            def get_system_prompt_snippet(self): return ""
+        return CP()
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    registry = ModuleRegistry()
+    with caplog.at_level(logging.WARNING):
+        registry.discover_modules("mixed_modules")
+
+    # Both good and external should be registered, broken should be skipped with warning log
+    assert "good" in registry
+    assert "external" in registry
+    # Ensure broken module did not crash discovery
+    assert len(registry) == 2
+
+
