@@ -1,3 +1,12 @@
+# ==============================================================================
+# 🌈 [Scenario 개발 레인보우 로드맵]
+# 🔴 [Step 1 - 빨간점] Pydantic 파라미터 스키마 정의 (LLM 라우터가 추출할 인자 규격)
+# 🟠 [Step 2 - 주황점] BaseScenario 상속 및 메타데이터(name, description, required_tool_names) 선언
+# 🟡 [Step 3 - 노란점] execute() 내 정예 도구 순차/병렬 체이닝 파이프라인 작성
+# 🟢 [Step 4 - 초록점] LLM 크로스 인사이트 리포트 생성 및 예외 폴백 처리
+# 🔵 [Step 5 - 파란점] tests/core/test_scenario.py 에 단위 테스트 추가
+# ==============================================================================
+
 import logging
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, Field
@@ -8,6 +17,9 @@ from src.core.scenario import BaseScenario
 logger = logging.getLogger(__name__)
 
 
+# ------------------------------------------------------------------------------
+# 🔴 [Step 1 - 빨간점] Pydantic 파라미터 스키마 정의
+# ------------------------------------------------------------------------------
 class CrossPlatformTrendParams(BaseModel):
     """크로스 플랫폼 트렌드 분석에 필요한 파라미터."""
 
@@ -22,6 +34,9 @@ class CrossPlatformTrendParams(BaseModel):
     )
 
 
+# ------------------------------------------------------------------------------
+# 🟠 [Step 2 - 주황점] BaseScenario 상속 및 메타데이터 선언
+# ------------------------------------------------------------------------------
 class CrossPlatformTrendScenario(BaseScenario):
     """네이버 쇼핑 트렌드와 유튜브 검색 결과를 결합하여 크로스 플랫폼 분석을 수행하는 시나리오."""
 
@@ -44,6 +59,9 @@ class CrossPlatformTrendScenario(BaseScenario):
     def required_tool_names(self) -> List[str]:
         return ["get_shopping_trends", "search_youtube_videos"]
 
+    # --------------------------------------------------------------------------
+    # 🟡 [Step 3 - 노란점] execute() 내 정예 도구 체이닝 & 🟢 [Step 4 - 초록점] 종합 리포트
+    # --------------------------------------------------------------------------
     def execute(
         self,
         params: CrossPlatformTrendParams,
@@ -51,11 +69,10 @@ class CrossPlatformTrendScenario(BaseScenario):
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
         """네이버 트렌드와 유튜브 검색을 순차 체이닝하여 종합 인사이트를 생성합니다."""
-        logger.info("[시나리오 실행: %s] 대상 키워드: %s", self.name, params.keyword)
         context = context or {}
         llm = context.get("llm")
 
-        # Step 1: 네이버 쇼핑 트렌드 수집
+        # 🟡 [Step 3-1] 도구 호출: 네이버 쇼핑 트렌드 수집
         trend_tool = tools.get("get_shopping_trends")
         trend_result = "네이버 트렌드 도구를 사용할 수 없습니다."
         if trend_tool:
@@ -65,12 +82,12 @@ class CrossPlatformTrendScenario(BaseScenario):
                     "start_date": params.start_date,
                     "end_date": params.end_date,
                 })
-                logger.debug("Step 1 (네이버 트렌드) 완료: %s", trend_result[:100])
+                logger.debug("Step 3-1 (네이버 트렌드) 완료: %s", trend_result[:100] if isinstance(trend_result, str) else trend_result)
             except Exception as e:
-                logger.warning("Step 1 (네이버 트렌드) 호출 실패: %s", e)
+                logger.warning("Step 3-1 (네이버 트렌드) 호출 실패: %s", e)
                 trend_result = f"네이버 트렌드 조회 실패: {e}"
 
-        # Step 2: 유튜브 관련 영상 수집
+        # 🟡 [Step 3-2] 도구 호출: 유튜브 관련 영상 수집
         yt_tool = tools.get("search_youtube_videos")
         yt_result = "유튜브 검색 도구를 사용할 수 없습니다."
         if yt_tool:
@@ -79,12 +96,12 @@ class CrossPlatformTrendScenario(BaseScenario):
                     "query": params.keyword,
                     "max_results": 3,
                 })
-                logger.debug("Step 2 (유튜브 영상 검색) 완료: %s", yt_result[:100])
+                logger.debug("Step 3-2 (유튜브 영상 검색) 완료: %s", yt_result[:100] if isinstance(yt_result, str) else yt_result)
             except Exception as e:
-                logger.warning("Step 2 (유튜브 검색) 호출 실패: %s", e)
+                logger.warning("Step 3-2 (유튜브 검색) 호출 실패: %s", e)
                 yt_result = f"유튜브 영상 검색 실패: {e}"
 
-        # Step 3: LLM을 통한 크로스 인사이트 종합 리포트 생성
+        # 🟢 [Step 4 - 초록점] LLM을 통한 크로스 인사이트 종합 리포트 생성
         if llm:
             prompt = ChatPromptTemplate.from_messages([
                 (

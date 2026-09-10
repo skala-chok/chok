@@ -193,6 +193,40 @@ python src/main.py --interactive
 
 ---
 
+### 🌈 신규 작업자를 위한 레인보우(무지개색 점) Step-by-Step 로드맵
+
+신규 작업자(Worker)가 코드를 처음 작성할 때 무엇부터 시작해야 할지 헤매지 않도록, **무지개색 순서(🔴 ➔ 🟠 ➔ 🟡 ➔ 🟢 ➔ 🔵 ➔ 🟣)**로 파일 상단 주석과 개발 순서가 일관되게 구조화되어 있습니다.
+
+#### 1. 에이전트 도구 모듈(`src/modules/<모듈명>/`) 개발 로드맵
+```
+ 🔴 client.py    ➔ 🟠 guardrails.py ➔ 🟡 tools.py      ➔ 🟢 context.py    ➔ 🔵 module.py    ➔ 🟣 tests/
+ (외부 API 클라이언트) (인자검증/정제 방패)  (LangChain @tool) (프롬프트 도메인가이드) (모듈 통합 등록)  (격리 단위테스트)
+```
+
+| 단계 | 색상 및 대상 파일 | 담당 역할 및 개발 내용 |
+|:---:|:---|:---|
+| **Step 1** | 🔴 `client.py` | **외부 API 통신 클라이언트**: 순수 HTTP 통신, API 키 인증 헤더, JSON 파싱, 기본 네트워크 예외 처리 구현 |
+| **Step 2** | 🟠 `guardrails.py` | **가드레일 방패**: [`BaseGuardrail`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrail.py) 상속. LLM이 넘긴 파라미터 유효성 검증(`validate_input`) 및 민감정보 마스킹/출력 정제(`sanitize_output`) |
+| **Step 3** | 🟡 `tools.py` | **LangChain 도구 정의**: `@tool` 데코레이터 적용. LLM이 도구 선택 기준으로 삼는 Docstring과 Type Hint 명확히 작성, 클라이언트와 가드레일 결합 |
+| **Step 4** | 🟢 `context.py` | **도메인 컨텍스트 제공자**: [`BaseContextProvider`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/context.py) 상속. LLM에게 해당 도메인의 핵심 키워드, 도구 사용 시 주의사항을 시스템 프롬프트 조각으로 전달 |
+| **Step 5** | 🔵 `module.py` | **에이전트 모듈 패키징**: [`BaseAgentModule`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/module.py) 상속. 도구 리스트, 가드레일, 컨텍스트를 하나로 묶어 레지스트리가 자동 로드(`Auto-Discovery`)할 수 있도록 등록 |
+| **Step 6** | 🟣 `tests/modules/test_xxx.py` | **100% Mock 단위 테스트**: 외부 실 API 호출 없이 `unittest.mock`으로 클라이언트 응답을 모킹하여 도구 및 모듈 정상 동작 검증 |
+
+#### 2. 복합 시나리오 체인(`src/scenarios/<시나리오명>/`) 개발 로드맵
+```
+ 🔴 Pydantic 스키마 ➔ 🟠 BaseScenario 선언 ➔ 🟡 execute() 도구 체이닝 ➔ 🟢 LLM 크로스 리포트 ➔ 🔵 단위 테스트 검증
+```
+
+| 단계 | 색상 및 대상 위치 | 담당 역할 및 개발 내용 |
+|:---:|:---|:---|
+| **Step 1** | 🔴 `scenario.py` 상단 | **입력 파라미터 스키마**: Pydantic `BaseModel`로 질의에서 추출할 필수/선택 파라미터 선언 |
+| **Step 2** | 🟠 `scenario.py` 클래스 | **시나리오 선언**: [`BaseScenario`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/scenario.py) 상속 및 메타데이터(`name`, `description`, `required_tools`) 정의 |
+| **Step 3** | 🟡 `execute()` 내부 | **정예 도구 순차 체이닝**: `tools.get(...)`으로 필요한 도구들을 단계별로 호출하고 중간 결과 데이터 축적 |
+| **Step 4** | 🟢 `execute()` 하단 | **LLM 크로스 리포트 생성**: `ChatPromptTemplate \| llm` 파이프라인으로 멀티 플랫폼 데이터를 융합 분석하고 예외 시 Fallback 데이터 반환 |
+| **Step 5** | 🔵 `tests/core/test_scenario.py` | **시나리오 단위 테스트**: Mock 도구 및 Mock LLM으로 체인 전체 흐름 및 Fallback 정상 동작 검증 |
+
+---
+
 ### 1. Tool (도구) 개발 가이드
 
 #### Q. Tool이란 무엇인가요?
