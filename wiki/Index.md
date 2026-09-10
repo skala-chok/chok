@@ -1,42 +1,72 @@
-# 📚 [Index] 프로젝트 개발 & 이슈 현황 위키
+# 📚 [Index] 생성형 AI 서비스 개발 교재 마스터 위키 & 아키텍처 로드맵
 
-> **LangChain Multi-Worker & Model-Driven Scenario Agent 시스템 위키**  
-> 본 위키는 프로젝트의 핵심 아키텍처, 개발 가이드, 그리고 시스템 개선 과정에서 도출된 이슈와 기술적 분석(Study)을 체계적으로 관리합니다.
+> **교재**: `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf` (총 172페이지)  
+> **시스템**: LangChain Multi-Worker & Model-Driven Scenario Agent (`skala-chok`)  
+> **최근 업데이트**: 2026-09-11
 
----
-
-## 🧭 위키 내비게이션
-
-- **[Index] (현재 페이지)**: 전체 위키 목차 및 이슈 1~6 현황 대시보드
-- **[[Study] 기술 분석 및 트러블슈팅 노트](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Study.md)**: 이슈 1~6 심층 원인 분석, 학습 포인트(Best Practices), Before/After 코드
-- **[메인 README 개발 가이드](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/README.md)**: 빠른 시작(Quickstart), 4대 핵심 개발 가이드, 레인보우 로드맵
+본 위키는 생성형 AI 서비스 개발 교재의 전 챕터(Chapter 1 ~ Chapter 5)에서 다루는 이론, 엔터프라이즈 아키텍처 패턴, 실습 코드, 그리고 본 프로젝트([`skala-chok`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/README.md)) 소스 코드와의 심층 매핑 내역을 집대성한 공식 기술 저장소입니다.
 
 ---
 
-## 📊 시스템 개선 이슈 1~6 현황 대시보드
+## 🧭 위키 챕터별 네비게이션 및 학습 로드맵
 
-시스템의 관측성(Observability) 및 디버깅 편의성을 위해 코어 및 CLI 전반에 걸쳐 도출되고 해결된 6대 핵심 이슈입니다.
-
-| 번호 | 구분 / 컴포넌트 | 이슈 내용 (Problem) | 개선 조치 (Resolution) | 상태 | 관련 소스 코드 |
-|:---:|:---|:---|:---|:---:|:---|
-| **#1** | **Core / Agent** | Fallback 일반 에이전트 실행 및 소요 시간 누락 | ReAct 루프 진입/종료 로그 및 지연 시간(`time.time()`) 기록 | `Resolved` | [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py) |
-| **#2** | **Core / Agent** | API 키 누락 등으로 비활성화된(Disabled) 모듈 안내 누락 | 초기화 시 비활성 모듈 목록 및 사유 안내 로깅 추가 | `Resolved` | [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py) |
-| **#3** | **Core / Guardrails** | 출력 정제(`sanitize_output`) 실제 적용 여부 추적 불가 | 출력값 변경 감지 시 마스킹/정제 적용 내역 로깅 | `Resolved` | [`src/core/guardrails.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py) |
-| **#4** | **Core / Router** | 시나리오 라우팅 분석 시작 및 LLM 소요 시간 누락 | 라우팅 분석 시작 로그 및 LLM 판단 지연 시간 측정 | `Resolved` | [`src/core/router.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/router.py) |
-| **#5** | **Core / Registry** | 모듈 및 시나리오 자동 탐색(Auto-Discovery) 완료 통계 누락 | 동적 스캔 완료 시 총 등록 개수 통계 정보 기록 | `Resolved` | [`src/core/registry.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/registry.py) |
-| **#6** | **CLI / main.py** | 질의 처리 전체 End-to-End 응답 소요 시간 누락 | 사용자 관점의 단일 질의 처리 총 소요 시간 로깅 | `Resolved` | [`src/main.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/main.py) |
-
-> 💡 각 이슈별 상세한 원인 분석, 왜 중요한지에 대한 기술적 학습(Study), Before/After 구현 코드 및 검증 결과는 **[[Study] 문서](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Study.md)**에서 확인하실 수 있습니다.
+| 챕터 | 위키 문서 링크 | 핵심 토픽 | 주요 실습 및 컴포넌트 | 프로젝트 연계 파일 |
+| :---: | :--- | :--- | :--- | :--- |
+| **Ch.1** | [**Chapter 1. Introduction**](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_1_Introduction.md) | AI App 패러다임 전환, 6단계 진화, ReAct 루프, AI 거버넌스 | OWASP Top 10, NIST AI RMF, EU AI Act, 8대 체크리스트 | [`src/core/base.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py) |
+| **Ch.2** | [**Chapter 2. LLM Foundations**](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_2_LLM_Foundations.md) | 토큰 예측 원리, 6대 보완 기술, 글로벌 파운데이션 모델 비교 | Hugging Face Pipeline, Google GenAI SDK, OpenAI SDK | [`src/config.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/config.py) |
+| **Ch.3** | [**Chapter 3. LangChain**](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_3_LangChain.md) | LangChain 4대 추상화, Structured Output, LCEL 체이닝 | `init_chat_model`, Pydantic Schema, `RunnableParallel`, `@tool` | [`src/core/router.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/router.py), [`tools.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/modules/naver_search/tools.py) |
+| **Ch.4** | [**Chapter 4. Basic Agent**](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_4_Basic_Agent.md) | Agent 7단계 라이프사이클, 도구 오케스트레이션, 단기 메모리 | `create_agent`, `InMemorySaver`(`thread_id`), `LLMToolEmulator` | [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py), [`tests/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/) |
+| **Ch.5** | [**Chapter 5. Advanced Agent**](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_5_Advanced_Agent.md) | 런타임 상태 제어, 미들웨어, 다계층 가드레일, 장기 기억 | Runtime `Context`, Node/Wrap Hooks, HITL, `PIIDetection`, `Store` | [`src/core/guardrails.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py), [`src/core/base.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py) |
+| **부록** | [**Appendix. Observability**](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Appendix_Observability_Troubleshooting.md) | 관측성 강화 및 로깅 6대 이슈 트러블슈팅 | 듀얼 경로 계측, 출력 정제 감사 로그, 라우팅 지연 계측 | [`src/main.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/main.py), [`agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py) |
 
 ---
 
-## 🛠️ 모듈 및 시나리오 개발 로드맵 요약
+## 🗺️ 전체 학습 여정 다이어그램 (Learning Flow)
 
-신규 작업자(Worker)는 **레인보우(무지개색 점 🔴 ➔ 🟠 ➔ 🟡 ➔ 🟢 ➔ 🔵 ➔ 🟣)** 가이드에 따라 개발을 진행합니다.
+```mermaid
+flowchart TD
+    C1["<b>Chapter 1. Introduction</b><br>• 전통 SW vs AI Agent 패러다임 전환<br>• AI 제품의 6단계 진화 및 ReAct 사이클<br>• 엔터프라이즈 AI 보안 거버넌스 8대 체크리스트"]
+    --> C2["<b>Chapter 2. LLM Foundations</b><br>• LLM 동작 원리 & 한계 극복 6대 기술 스택<br>• 글로벌 주요 LLM 벤더/모델 비교 분석<br>• Hugging Face, Gemini SDK, OpenAI SDK 제어"]
+    --> C3["<b>Chapter 3. LangChain</b><br>• Chat Model, Messages, Prompts 추상화<br>• Pydantic 기반 Structured Output 강제<br>• LCEL 파이프라인 및 Tool Calling 커스텀 개발"]
+    --> C4["<b>Chapter 4. Basic Agent</b><br>• 두뇌(Model)와 손발(Tools)의 7단계 순환 루프<br>• Checkpointer와 thread_id를 통한 단기 세션 분리<br>• ToolStrategy 및 가상 에뮬레이터 기반 후처리 파이프라인"]
+    --> C5["<b>Chapter 5. Advanced Agent</b><br>• Runtime Context 주입 및 Hook 기반 상태 제어<br>• 빌트인/커스텀 미들웨어(HITL, PII 마스킹, To-do)<br>• Before/After 다계층 가드레일 & Store 기반 장기 기억 구축"]
+```
 
-1. 🔴 **[Step 1]** `client.py`: 외부 API 통신 클라이언트 (HTTP, 인증, 파싱)
-2. 🟠 **[Step 2]** `guardrails.py`: [`BaseGuardrail`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrail.py) 상속 (입력 검증 & 출력 마스킹)
-3. 🟡 **[Step 3]** `tools.py`: LangChain `@tool` 선언 (Docstring & Type Hint)
-4. 🟢 **[Step 4]** `context.py`: [`BaseContextProvider`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/context.py) 상속 (도메인 프롬프트 가이드)
-5. 🔵 **[Step 5]** `module.py`: [`BaseAgentModule`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/module.py) 상속 (모듈 패키징 및 등록)
-6. 🟣 **[Step 6]** `tests/modules/`: 100% Mock 기반 단위 테스트 검증
+---
+
+## 🏛️ 교재 핵심 아키텍처 반영 현황 및 로드맵 점검표
+
+본 프로젝트(`skala-chok`)가 교재의 5개 챕터 핵심 아키텍처를 어느 수준까지 반영하고 있는지 점검한 종합 현황표입니다.
+
+### 1. 현황 점검 요약
+- **반영 완료 (Implemented)**: 12개 항목 (전체 핵심 아키텍처의 약 75% 완성)
+- **개선 필요 / 고도화 대상 (Action Items)**: 5개 항목 (단기 메모리 연결, 멀티 벤더 전환, 병렬 체이닝, 장기 메모리 스토어, HITL)
+
+| 챕터 | 주요 아키텍처 항목 | 반영 여부 | 관련 소스 코드 |
+| :---: | :---| :---: | :---|
+| **Ch.1** | ReAct 추론-행동 실행 루프 | ✅ 반영 | [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py) |
+| **Ch.1** | 8대 거버넌스 체크리스트 (프롬프트 인젝션 방어, PII 마스킹) | ✅ 반영 | [`src/core/guardrails.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py) |
+| **Ch.2** | 환경변수 기반 모델 설정 및 하이퍼파라미터 추상화 | ✅ 반영 | [`src/config.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/config.py) |
+| **Ch.2** | 100% Mock 격리 테스트 환경 (쿼터 소모 0) | ✅ 반영 | [`tests/modules/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/modules/), [`tests/core/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/tests/core/) |
+| **Ch.3** | Messages 4대 계층 추상화 (`ChatPromptTemplate`, `MessagesPlaceholder`) | ✅ 반영 | [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py) |
+| **Ch.3** | Pydantic 스키마 기반 Structured Output (`with_structured_output`) | ✅ 반영 | [`src/core/router.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/router.py) |
+| **Ch.3** | LCEL 파이프 연산자(`\|`) 체이닝 | ✅ 반영 | [`src/core/router.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/router.py) |
+| **Ch.3** | 커스텀 도구(`@tool`) 개발 4대 수칙 엄격 준수 | ✅ 반영 | [`src/modules/*/tools.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/modules/naver_search/tools.py) |
+| **Ch.4** | Agent 7단계 실행 라이프사이클 | ✅ 반영 | [`src/core/agent.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/agent.py) |
+| **Ch.4** | 다중 도구 오케스트레이션 (`ModuleRegistry`) | ✅ 반영 | [`src/core/registry.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/registry.py) |
+| **Ch.4** | 단기 메모리 (Checkpointer & `thread_id`) 실 세션 연결 | ⚠️ 개선 필요 | `src/core/agent.py`, `src/main.py` |
+| **Ch.5** | 컨텍스트 엔지니어링 (`BaseContextProvider`, Runtime Context) | ✅ 반영 | [`src/core/base.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/base.py) |
+| **Ch.5** | Before & After 다계층 가드레일 파이프라인 (`GuardrailedTool`) | ✅ 반영 | [`src/core/guardrails.py`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/src/core/guardrails.py) |
+| **Ch.5** | Store 기반 장기 메모리 (Long-term Memory) 시스템 | ⚠️ 향후 과제 | `src/core/memory.py` 신설 필요 |
+
+---
+
+## 🚀 향후 권장 고도화 로드맵 (Action Items)
+
+| 우선순위 | 과제명 | 대상 모듈 | 관련 챕터 | 기대 효과 |
+| :---: | :---| :---| :---: | :---|
+| **P1** | **단기 메모리(대화 세션) 연결** | `src/core/agent.py`, `src/main.py` | Ch.4 | 대화형 모드(`--interactive`)에서 이전 발화 맥락을 기억하는 멀티턴 대화 실현 |
+| **P2** | **LangChain 최신 `init_chat_model` 전환** | `src/core/agent.py`, `src/config.py` | Ch.3 | OpenAI 외에 Gemini, Claude, Llama 등 다양한 LLM 공급자를 환경변수 설정만으로 교체 |
+| **P3** | **시나리오 병렬 수집 (`RunnableParallel`) 적용** | `src/scenarios/*/scenario.py` | Ch.3 | 네이버 트렌드와 유튜브 검색을 비동기 동시 실행하여 시나리오 응답 속도 대폭 개선 |
+| **P4** | **Store 기반 사용자 장기 메모리 도입** | `src/core/memory.py` (신규) | Ch.5 | 사용자 맞춤형 관심 키워드 및 검색 선호도를 영구 기억하여 초개인화 에이전트 구축 |
+| **P5** | **고위험 작업을 위한 Human-in-the-loop (HITL) 도입** | `src/core/guardrails.py` | Ch.1, Ch.5 | 금융 결제, 메일 발송 등 부작용(Side-effect)을 유발하는 고위험 도구 호출 시 사용자 승인 강제 |

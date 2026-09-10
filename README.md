@@ -21,6 +21,7 @@
 6. [작업자(Worker) 역할 분담 및 협업 원칙](#-작업자worker-역할-분담-및-협업-원칙)
 7. [테스트 및 품질 검증 가이드](#-테스트-및-품질-검증-가이드)
 8. [프로젝트 위키 (Index & Study)](#-프로젝트-위키-index--study)
+9. [하네스 엔지니어링 Handoff 센터 (handoff/index.md)](#-하네스-엔지니어링-handoff-센터-handoffindexmd)
 
 ---
 
@@ -64,9 +65,23 @@ skala-chok/
 ├── requirements.txt                 # 전체 의존성 목록
 ├── pytest.ini                       # Pytest 실행 설정
 ├── README.md                        # 본 개발자 가이드
-├── wiki/                            # 📚 프로젝트 개발 및 이슈 분석 위키
-│   ├── Index.md                     # [Index] 메인 목차 및 이슈 1~6 현황 대시보드
-│   ├── Study.md                     # [Study] 이슈 1~6 기술 스터디 및 트러블슈팅
+├── handoff/                         # 🧭 하네스 엔지니어링 및 인수인계 문서군
+│   ├── index.md                     # Handoff 중앙 라우팅 허브
+│   ├── 01_code_style.md             # 코드 스타일 및 린트 규격
+│   ├── 02_architecture.md           # 현재 시스템 아키텍처 구조
+│   ├── 03_guidelines.md             # 작성 준수 사항 및 개발 원칙
+│   ├── 04_testing_harness.md        # 테스트 및 하네스 엔지니어링 가이드
+│   ├── 05_extension_guide.md        # 신규 모듈/시나리오 확장 가이드
+│   └── 06_troubleshooting.md        # 트러블슈팅 및 운영 가이드
+├── wiki/                            # 📚 생성형 AI 서비스 개발 교재 마스터 위키
+│   ├── Index.md                     # [Index] 교재 전체 로드맵 & 아키텍처 점검표
+│   ├── Study.md                     # [Study] 챕터별 심층 스터디 중앙 허브
+│   ├── Chapter_1_Introduction.md    # [Ch 1] 패러다임 진화, ReAct, 에이전트 거버넌스
+│   ├── Chapter_2_LLM_Foundations.md # [Ch 2] 토큰 예측, 6대 기술, 3대 SDK 제어
+│   ├── Chapter_3_LangChain.md       # [Ch 3] 4대 추상화, Structured Output, LCEL
+│   ├── Chapter_4_Basic_Agent.md     # [Ch 4] 7단계 루프, Checkpointer, Mocking
+│   ├── Chapter_5_Advanced_Agent.md  # [Ch 5] Runtime Context, 미들웨어, 가드레일
+│   ├── Appendix_Observability_Troubleshooting.md # [부록] 관측성/로깅 트러블슈팅
 │   └── _Sidebar.md                  # GitHub Wiki 표준 사이드바
 ├── src/
 │   ├── main.py                      # CLI 엔트리포인트 (로깅, 예외처리 포함)
@@ -495,15 +510,36 @@ pytest tests/modules/test_yt_search.py -v
 
 ---
 
-## 📚 프로젝트 위키 (Index & Study)
+## 📚 생성형 AI 서비스 개발 교재 마스터 위키 (`wiki/`)
 
-프로젝트의 지속적인 개선 과정에서 도출된 기술적 이슈와 아키텍처 학습 내용은 [`wiki/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/) 디렉토리에 체계적으로 아카이빙되어 있습니다.
+교재 `(교재)AI캠퍼스_생성형AI_5.생성형 AI 서비스 개발_이미애.pdf`의 전 챕터(1~5장) 핵심 이론, 실습 코드, 그리고 본 프로젝트 소스 코드와의 심층 매핑 내역은 [`wiki/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/) 디렉토리에 체계적으로 구축되어 있습니다.
 
-- **[[Index] 위키 메인 대시보드](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)**: 전체 시스템 개선 이슈 1~6 현황 테이블 및 컴포넌트별 해결 상태 요약
-- **[[Study] 기술 분석 및 트러블슈팅](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Study.md)**: 이슈 1~6의 심층 원인 분석, 엔터프라이즈 AI 엔지니어링 관점의 학습 포인트(Best Practices), Before/After 해결 코드
+- **[[Index] 마스터 위키 로드맵 & 아키텍처 점검표](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)**: 전체 5개 챕터 로드맵, 핵심 토픽 및 본 프로젝트 반영 점검표
+- **[[Study] 챕터별 심층 스터디 허브](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Study.md)**: 챕터 1~5 심층 분석 및 실습 코드 중앙 허브
+  - [📘 Ch 1. Introduction (패러다임 진화, ReAct, 거버넌스 8대 체크리스트)](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_1_Introduction.md)
+  - [📘 Ch 2. LLM Foundations (토큰 예측, 6대 기술, 3대 SDK 제어)](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_2_LLM_Foundations.md)
+  - [📘 Ch 3. LangChain (4대 추상화, Structured Output, LCEL, Tool Calling)](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_3_LangChain.md)
+  - [📘 Ch 4. Basic Agent (7단계 라이프사이클, Checkpointer, Mocking 철학)](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_4_Basic_Agent.md)
+  - [📘 Ch 5. Advanced Agent (Runtime Context, 미들웨어, 다계층 가드레일, 장기 기억)](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Chapter_5_Advanced_Agent.md)
+  - [📘 [부록] 시스템 관측성 & 로깅 6대 이슈 트러블슈팅](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Appendix_Observability_Troubleshooting.md)
+
+
+---
+
+## 🧭 하네스 엔지니어링 Handoff 센터 (`handoff/index.md`)
+
+신규 작업자 온보딩, 코드 스타일, 아키텍처 구조 및 하네스 엔지니어링 가이드는 [`handoff/`](handoff/index.md) 디렉토리에 구축되어 있습니다.
+
+- [🎨 1. 코드 스타일 가이드 (`handoff/01_code_style.md`)](handoff/01_code_style.md)
+- [🏛️ 2. 현재 아키텍처 구조 (`handoff/02_architecture.md`)](handoff/02_architecture.md)
+- [📜 3. 작성 준수 사항 (`handoff/03_guidelines.md`)](handoff/03_guidelines.md)
+- [🧪 4. 테스트 및 하네스 엔지니어링 (`handoff/04_testing_harness.md`)](handoff/04_testing_harness.md)
+- [🚀 5. 신규 모듈/시나리오 확장 가이드 (`handoff/05_extension_guide.md`)](handoff/05_extension_guide.md)
+- [🛠️ 6. 트러블슈팅 및 운영 가이드 (`handoff/06_troubleshooting.md`)](handoff/06_troubleshooting.md)
 
 ---
 
 ## 📜 라이선스
 MIT License
+
 
