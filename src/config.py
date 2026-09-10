@@ -20,4 +20,9 @@ class Settings(BaseSettings):
     NAVER_CLIENT_ID: Optional[str] = None
     NAVER_CLIENT_SECRET: Optional[str] = None
 
+    # Instagram Graph API
+    INSTAGRAM_ACCESS_TOKEN: Optional[str] = None
+    INSTAGRAM_USER_ID: Optional[str] = None
+    INSTAGRAM_API_VERSION: str = "v21.0"
+
 settings = Settings()
