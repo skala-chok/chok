@@ -53,6 +53,11 @@ def main():
         print("=" * 60)
 
         runner = AgentRunner(registry=registry)
+        scenarios = runner.scenario_registry.get_all_scenarios()
+        logger.info("활성 시나리오 로드 완료 (%d개): %s", len(scenarios), [s.name for s in scenarios])
+        if scenarios:
+            print(f"로드된 활성 시나리오 ({len(scenarios)}개): {[s.name for s in scenarios]}")
+            print("=" * 60)
         logger.info("AgentRunner 초기화 완료")
     except Exception as e:
         logger.critical("초기화 중 치명적 오류 발생: %s", e, exc_info=True)
