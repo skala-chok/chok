@@ -20,6 +20,7 @@ class YouTubeSearchModule(BaseAgentModule):
         return bool(settings.YOUTUBE_API_KEY)
 
     def get_tools(self) -> List[BaseTool]:
+        # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
         return [search_youtube_videos, get_video_transcript]
 
     def get_guardrails(self) -> List[BaseGuardrail]:

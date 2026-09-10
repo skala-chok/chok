@@ -54,3 +54,18 @@ def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
         return "\n".join(summary)
     except Exception as e:
         return f"트렌드 분석 조회 실패: {str(e)}"
+
+
+# ==============================================================================
+# [Tool 추가 영역]
+# 새로운 도구(Tool)를 정의하려면 이 영역 아래에 @tool 데코레이터를 사용하여 함수를 추가하시면 됩니다.
+# 작성 예시:
+# @tool
+# def my_new_tool(param: str) -> str:
+#     """도구에 대한 상세 설명을 작성하세요."""
+#     # 로직 구현
+#     return "결과 문자열"
+# 
+# ※ 주의: 새로 작성한 tool은 module.py의 get_tools() 반환 리스트에도 반드시 등록해 주세요.
+# ==============================================================================
+
