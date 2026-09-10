@@ -20,6 +20,7 @@
    - [④ 시나리오(Scenario) 개발 가이드](#4-시나리오scenario-개발-가이드)
 6. [작업자(Worker) 역할 분담 및 협업 원칙](#-작업자worker-역할-분담-및-협업-원칙)
 7. [테스트 및 품질 검증 가이드](#-테스트-및-품질-검증-가이드)
+8. [프로젝트 위키 (Index & Study)](#-프로젝트-위키-index--study)
 
 ---
 
@@ -63,6 +64,10 @@ skala-chok/
 ├── requirements.txt                 # 전체 의존성 목록
 ├── pytest.ini                       # Pytest 실행 설정
 ├── README.md                        # 본 개발자 가이드
+├── wiki/                            # 📚 프로젝트 개발 및 이슈 분석 위키
+│   ├── Index.md                     # [Index] 메인 목차 및 이슈 1~6 현황 대시보드
+│   ├── Study.md                     # [Study] 이슈 1~6 기술 스터디 및 트러블슈팅
+│   └── _Sidebar.md                  # GitHub Wiki 표준 사이드바
 ├── src/
 │   ├── main.py                      # CLI 엔트리포인트 (로깅, 예외처리 포함)
 │   ├── config.py                    # 전역 설정 (Pydantic Settings)
@@ -490,5 +495,15 @@ pytest tests/modules/test_yt_search.py -v
 
 ---
 
+## 📚 프로젝트 위키 (Index & Study)
+
+프로젝트의 지속적인 개선 과정에서 도출된 기술적 이슈와 아키텍처 학습 내용은 [`wiki/`](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/) 디렉토리에 체계적으로 아카이빙되어 있습니다.
+
+- **[[Index] 위키 메인 대시보드](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Index.md)**: 전체 시스템 개선 이슈 1~6 현황 테이블 및 컴포넌트별 해결 상태 요약
+- **[[Study] 기술 분석 및 트러블슈팅](file:///Users/yun-yeongmin/orca/workspaces/skala-chok/main/wiki/Study.md)**: 이슈 1~6의 심층 원인 분석, 엔터프라이즈 AI 엔지니어링 관점의 학습 포인트(Best Practices), Before/After 해결 코드
+
+---
+
 ## 📜 라이선스
 MIT License
+
