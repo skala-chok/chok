@@ -1,0 +1,24 @@
+import re
+from typing import Any, Dict
+from src.core.base import BaseGuardrail, GuardrailResult
+
+
+class YouTubeAnalyticsGuardrail(BaseGuardrail):
+    def validate_tool_args(self, tool_name: str, args: Dict[str, Any]) -> GuardrailResult:
+        if tool_name == "get_video_comments":
+            max_c = args.get("max_comments", 10)
+            if max_c > 50 or max_c < 1:
+                return GuardrailResult(passed=False, error_message="max_comments는 1 이상 50 이하여야 합니다.")
+        elif tool_name == "get_channel_stats":
+            cid = args.get("channel_id", "")
+            if not cid:
+                return GuardrailResult(passed=False, error_message="channel_id가 누락되었습니다.")
+        return GuardrailResult(passed=True)
+
+    def sanitize_output(self, tool_name: str, output: Any) -> Any:
+        if isinstance(output, str):
+            # Mask Email
+            output = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[EMAIL_MASKED]", output)
+            # Mask Korean Phone numbers (010-XXXX-XXXX, etc.)
+            output = re.sub(r"01[016789]-?\d{3,4}-?\d{4}", "[PHONE_MASKED]", output)
+        return output
