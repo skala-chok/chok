@@ -151,7 +151,7 @@ cp .env.example .env
 ```ini
 # OpenAI 설정 (에이전트 LLM 구동용)
 OPENAI_API_KEY=your_openai_api_key_here
-MODEL_NAME=gpt-4o-mini
+MODEL_NAME=gpt-5-luna
 TEMPERATURE=0.0
 
 # Worker 1 & Worker 2 (Google Cloud Console 발급)
