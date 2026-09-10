@@ -5,10 +5,15 @@ from src.core.base import (
     BaseGuardrail,
     GuardrailResult,
 )
+from src.core.guardrails import wrap_tool_with_guardrails
+from src.core.registry import ModuleRegistry
 
 __all__ = [
     "GuardrailResult",
     "BaseGuardrail",
     "BaseContextProvider",
     "BaseAgentModule",
+    "wrap_tool_with_guardrails",
+    "ModuleRegistry",
 ]
+
