@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any, Dict, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -32,6 +33,14 @@ class AgentRunner:
     ):
         self.registry = registry
         self.enabled_modules = self.registry.get_enabled_modules()
+        all_modules = self.registry.get_all_modules()
+        disabled_modules = [m for m in all_modules if not m.is_enabled()]
+        if disabled_modules:
+            logger.info(
+                "비활성화된 모듈 (%d개): %s (필수 API 키/설정 미부여)",
+                len(disabled_modules),
+                [m.name for m in disabled_modules],
+            )
 
         # Collect tools, guardrails, and context snippets
         self.all_guardrails: List[BaseGuardrail] = []
@@ -167,10 +176,19 @@ class AgentRunner:
                 logger.warning("시나리오 라우터 처리 실패 -> 일반 에이전트 폴백: %s", e_route)
 
         # 3. Fallback: General Agent Executor
+        logger.info("[일반 에이전트 시작] ReAct 도구 호출 루프 진입: '%s'", query)
+        start_agent = time.time()
         result = self.executor.invoke({"input": query})
-        if isinstance(result, dict):
-            return result.get("output", "")
-        return str(result)
+        elapsed_agent = time.time() - start_agent
+        output_text = (
+            result.get("output", "") if isinstance(result, dict) else str(result)
+        )
+        logger.info(
+            "[일반 에이전트 완료] 소요시간: %.2fs | 결과 크기: %d자",
+            elapsed_agent,
+            len(output_text),
+        )
+        return output_text
 
 
 AgentBuilder = AgentRunner

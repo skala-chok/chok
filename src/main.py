@@ -1,6 +1,7 @@
 import argparse
 import logging
 import sys
+import time
 from pathlib import Path
 
 # 프로젝트 루트를 sys.path에 추가하여 직접 스크립트 실행(python src/main.py) 지원
@@ -67,9 +68,11 @@ def main():
     if args.query:
         print(f"\n[질의]: {args.query}")
         logger.info("단일 질의 처리 시작: %s", args.query)
+        start_q = time.time()
         try:
             ans = runner.run(args.query)
-            logger.info("단일 질의 처리 완료")
+            elapsed_q = time.time() - start_q
+            logger.info("단일 질의 처리 완료 (총 소요시간: %.2fs)", elapsed_q)
             print(f"\n[답변]:\n{ans}\n")
         except Exception as e:
             logger.error("질의 처리 중 오류 발생: %s", e, exc_info=True)
@@ -89,8 +92,11 @@ def main():
                     break
 
                 logger.debug("사용자 질의 수신: %s", user_input)
+                start_turn = time.time()
                 try:
                     response = runner.run(user_input)
+                    elapsed_turn = time.time() - start_turn
+                    logger.info("응답 생성 완료 (총 소요시간: %.2fs)", elapsed_turn)
                     print(f"\n에이전트 >\n{response}")
                 except Exception as e:
                     logger.error("에이전트 응답 생성 실패: %s", e, exc_info=True)

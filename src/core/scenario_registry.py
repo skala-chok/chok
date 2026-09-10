@@ -126,3 +126,5 @@ class ScenarioRegistry:
                     e_scan,
                 )
                 continue
+
+        logger.info("시나리오 자동 탐색 완료: 총 %d개 등록됨", len(self._scenarios))

@@ -78,7 +78,14 @@ def wrap_tool_with_guardrails(
         # 3. Post-execution sanitization
         sanitized_output = raw_output
         for guardrail in guardrails:
+            prev_out = sanitized_output
             sanitized_output = guardrail.sanitize_output(tool.name, sanitized_output)
+            if sanitized_output != prev_out:
+                logger.debug(
+                    "[출력 정제 적용] 도구: '%s' | 가드레일: %s (데이터 정제/마스킹됨)",
+                    tool.name,
+                    type(guardrail).__name__,
+                )
 
         return sanitized_output
 
@@ -125,7 +132,14 @@ def wrap_tool_with_guardrails(
         # 3. Post-execution sanitization
         sanitized_output = raw_output
         for guardrail in guardrails:
+            prev_out = sanitized_output
             sanitized_output = guardrail.sanitize_output(tool.name, sanitized_output)
+            if sanitized_output != prev_out:
+                logger.debug(
+                    "[출력 정제 적용] 도구: '%s' | 가드레일: %s (데이터 정제/마스킹됨)",
+                    tool.name,
+                    type(guardrail).__name__,
+                )
 
         return sanitized_output
 

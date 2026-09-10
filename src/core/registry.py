@@ -28,6 +28,7 @@ class ModuleRegistry:
                 f"Expected an instance of BaseAgentModule, got {type(module).__name__}"
             )
         self._modules[module.name] = module
+        logger.debug("모듈 등록 완료: %s (활성화: %s)", module.name, module.is_enabled())
 
     def get_enabled_modules(self) -> List[BaseAgentModule]:
         """Return only registered modules whose is_enabled() returns True."""
@@ -133,4 +134,6 @@ class ModuleRegistry:
                     e_scan,
                 )
                 continue
+
+        logger.info("모듈 자동 탐색 완료: 총 %d개 등록됨", len(self._modules))
 

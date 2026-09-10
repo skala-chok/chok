@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -108,6 +109,8 @@ class ScenarioRouter:
             ("human", "사용자 요청: {query}"),
         ])
 
+        start_route = time.time()
+        logger.debug("[시나리오 라우팅 분석 시작] 질의: '%s'", query)
         try:
             structured_llm = self.llm.with_structured_output(ScenarioRoutingDecision)
             chain = prompt | structured_llm
@@ -115,6 +118,8 @@ class ScenarioRouter:
                 "catalog": catalog_text,
                 "query": query,
             })
+            route_elapsed = time.time() - start_route
+            logger.debug("[시나리오 라우팅 분석 완료] 소요시간: %.2fs", route_elapsed)
 
             if not decision.scenario_name:
                 logger.info("시나리오 미매칭 (일반 질의로 처리). 이유: %s", decision.reasoning)
