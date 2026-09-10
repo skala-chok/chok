@@ -1,6 +1,10 @@
+import logging
+import time
 from typing import Any, Dict, List, Optional
 from langchain_core.tools import BaseTool, StructuredTool
 from .base import BaseGuardrail
+
+logger = logging.getLogger("skala.guardrail")
 
 
 def wrap_tool_with_guardrails(
@@ -36,13 +40,40 @@ def wrap_tool_with_guardrails(
         for guardrail in guardrails:
             val_result = guardrail.validate_tool_args(tool.name, kwargs)
             if not val_result.passed:
-                return f"[가드레일 검증 실패] {val_result.error_message or '유효하지 않은 인자입니다.'}"
+                err_msg = val_result.error_message or "유효하지 않은 인자입니다."
+                logger.warning(
+                    "[가드레일 차단] 도구: '%s' | 가드레일: %s | 사유: %s | 인자: %s",
+                    tool.name,
+                    type(guardrail).__name__,
+                    err_msg,
+                    kwargs,
+                )
+                return f"[가드레일 검증 실패] {err_msg}"
 
-        # 2. Execute underlying tool function
-        if original_func is not None:
-            raw_output = original_func(**kwargs)
-        else:
-            raw_output = tool.invoke(kwargs)
+        # 2. Execute underlying tool function with timing and logging
+        start_time = time.time()
+        logger.debug("[도구 호출 시작] 도구: '%s' | 인자: %s", tool.name, kwargs)
+        try:
+            if original_func is not None:
+                raw_output = original_func(**kwargs)
+            else:
+                raw_output = tool.invoke(kwargs)
+            elapsed = time.time() - start_time
+            logger.info(
+                "[도구 실행 완료] 도구: '%s' | 소요시간: %.2fs",
+                tool.name,
+                elapsed,
+            )
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(
+                "[도구 실행 예외] 도구: '%s' | 소요시간: %.2fs | 에러: %s",
+                tool.name,
+                elapsed,
+                e,
+                exc_info=True,
+            )
+            raise
 
         # 3. Post-execution sanitization
         sanitized_output = raw_output
@@ -52,18 +83,44 @@ def wrap_tool_with_guardrails(
         return sanitized_output
 
     async def guarded_coroutine(**kwargs: Any) -> Any:
-
         # 1. Pre-execution argument validation
         for guardrail in guardrails:
             val_result = guardrail.validate_tool_args(tool.name, kwargs)
             if not val_result.passed:
-                return f"[가드레일 검증 실패] {val_result.error_message or '유효하지 않은 인자입니다.'}"
+                err_msg = val_result.error_message or "유효하지 않은 인자입니다."
+                logger.warning(
+                    "[가드레일 차단] 도구: '%s' | 가드레일: %s | 사유: %s | 인자: %s",
+                    tool.name,
+                    type(guardrail).__name__,
+                    err_msg,
+                    kwargs,
+                )
+                return f"[가드레일 검증 실패] {err_msg}"
 
-        # 2. Execute underlying tool coroutine
-        if original_coroutine is not None:
-            raw_output = await original_coroutine(**kwargs)
-        else:
-            raw_output = await tool.ainvoke(kwargs)
+        # 2. Execute underlying tool coroutine with timing and logging
+        start_time = time.time()
+        logger.debug("[비동기 도구 호출 시작] 도구: '%s' | 인자: %s", tool.name, kwargs)
+        try:
+            if original_coroutine is not None:
+                raw_output = await original_coroutine(**kwargs)
+            else:
+                raw_output = await tool.ainvoke(kwargs)
+            elapsed = time.time() - start_time
+            logger.info(
+                "[비동기 도구 실행 완료] 도구: '%s' | 소요시간: %.2fs",
+                tool.name,
+                elapsed,
+            )
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(
+                "[비동기 도구 실행 예외] 도구: '%s' | 소요시간: %.2fs | 에러: %s",
+                tool.name,
+                elapsed,
+                e,
+                exc_info=True,
+            )
+            raise
 
         # 3. Post-execution sanitization
         sanitized_output = raw_output

@@ -1,7 +1,11 @@
+import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, Field
 from langchain_core.tools import BaseTool
+
+logger = logging.getLogger("skala.scenario")
 
 
 class ScenarioExecutionPlan(BaseModel):
@@ -51,6 +55,49 @@ class BaseScenario(ABC):
         런타임에 ModuleRegistry로부터 해당 도구들만 주입받습니다.
         """
         return []
+
+    def run(
+        self,
+        params: BaseModel,
+        tools: Dict[str, BaseTool],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """시나리오 전체 라이프사이클(시작, 소요 시간, 결과, 예외)을 자동 로깅하는 템플릿 메서드."""
+        start_time = time.time()
+        params_dict = (
+            params.model_dump()
+            if hasattr(params, "model_dump")
+            else getattr(params, "__dict__", {})
+        )
+        logger.info(
+            "[시나리오 시작] '%s' | 파라미터: %s | 주입 도구 (%d개): %s",
+            self.name,
+            params_dict,
+            len(tools),
+            list(tools.keys()),
+        )
+
+        try:
+            output = self.execute(params=params, tools=tools, context=context)
+            elapsed = time.time() - start_time
+            output_len = len(output) if isinstance(output, str) else 0
+            logger.info(
+                "[시나리오 완료] '%s' | 소요시간: %.2fs | 결과 크기: %d자",
+                self.name,
+                elapsed,
+                output_len,
+            )
+            return output
+        except Exception as e:
+            elapsed = time.time() - start_time
+            logger.error(
+                "[시나리오 실패] '%s' | 소요시간: %.2fs | 에러: %s",
+                self.name,
+                elapsed,
+                e,
+                exc_info=True,
+            )
+            raise
 
     @abstractmethod
     def execute(

@@ -107,6 +107,12 @@ class AgentRunner:
         for guardrail in self.all_guardrails:
             val_res = guardrail.validate_input(query)
             if not val_res.passed:
+                logger.warning(
+                    "[사전 가드레일 차단] 가드레일: %s | 사유: %s | 질의: '%s'",
+                    type(guardrail).__name__,
+                    val_res.error_message,
+                    query,
+                )
                 return f"[안내] 입력이 가드레일 정책에 의해 차단되었습니다: {val_res.error_message}"
 
         # 2. Intelligent Scenario Routing
@@ -145,7 +151,7 @@ class AgentRunner:
                                 "plan": plan,
                                 "query": query,
                             }
-                            return scenario.execute(
+                            return scenario.run(
                                 params=validated_params,
                                 tools=scenario_tools,
                                 context=context,

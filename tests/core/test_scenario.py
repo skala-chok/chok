@@ -69,6 +69,36 @@ class TestScenarioAbstraction:
         assert plan.confidence == 0.95
         assert plan.parameters["query_text"] == "테스트"
 
+    def test_base_scenario_run_template_success(self):
+        scenario = DummyScenario()
+        params = DummyParams(query_text="성공테스트")
+        tools = {"dummy_tool": dummy_tool}
+
+        with patch("src.core.scenario.logger.info") as mock_info:
+            output = scenario.run(params, tools)
+            assert "DummyScenario 실행 완료: 성공테스트" in output
+            # 시작 로그 및 완료 로그가 남았는지 확인
+            assert mock_info.call_count >= 2
+
+    def test_base_scenario_run_template_failure(self):
+        class FailingScenario(BaseScenario):
+            @property
+            def name(self): return "fail_scen"
+            @property
+            def description(self): return "실패 시나리오"
+            @property
+            def parameters_schema(self): return DummyParams
+            def execute(self, params, tools, context=None):
+                raise RuntimeError("의도된 실행 에러")
+
+        scenario = FailingScenario()
+        params = DummyParams(query_text="에러")
+        with patch("src.core.scenario.logger.error") as mock_err:
+            with pytest.raises(RuntimeError) as exc_info:
+                scenario.run(params, {})
+            assert "의도된 실행 에러" in str(exc_info.value)
+            mock_err.assert_called_once()
+
 
 class TestScenarioRegistry:
     def test_register_and_get(self):
