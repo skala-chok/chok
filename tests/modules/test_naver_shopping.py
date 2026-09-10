@@ -91,6 +91,15 @@ def test_shopping_guardrail_date_validation():
     assert res.passed is False
     assert "YYYY-MM-DD" in res.error_message
 
+    # start_date > end_date 차단
+    res_order = guard.validate_tool_args("get_shopping_trends", {
+        "keywords": "노트북",
+        "start_date": "2026-03-01",
+        "end_date": "2026-02-01"
+    })
+    assert res_order.passed is False
+    assert "start_date" in res_order.error_message
+
     # 올바른 날짜 통과
     valid = guard.validate_tool_args("get_shopping_trends", {
         "keywords": "노트북",
@@ -108,6 +117,12 @@ def test_shopping_guardrail_display_and_sort_validation():
     assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 1}).passed is True
     assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 10}).passed is True
     assert guard.validate_tool_args("search_naver_shopping", {"query": "test"}).passed is True
+    # 문자열 정수 display 안전 캐스팅 허용
+    assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": "5"}).passed is True
+
+    res_invalid_type = guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": "abc"})
+    assert res_invalid_type.passed is False
+    assert "display" in res_invalid_type.error_message
 
     res_too_large = guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 11})
     assert res_too_large.passed is False
@@ -188,6 +203,54 @@ def test_search_naver_shopping_price_formatting(mock_get):
     assert "<b>" not in res
     assert "1,550,000원" in res
     assert "1,150,000원" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.get")
+def test_search_naver_shopping_filters_zero_price(mock_get):
+    mock_get.return_value.status_code = 200
+    mock_get.return_value.json.return_value = {
+        "items": [
+            {
+                "title": "무료배포 상품",
+                "link": "https://shopping.naver.com/free",
+                "lprice": "0",
+                "mallName": "이벤트몰"
+            },
+            {
+                "title": "유료 정상 상품",
+                "link": "https://shopping.naver.com/paid",
+                "lprice": "10000",
+                "mallName": "정상몰"
+            }
+        ]
+    }
+    res = search_naver_shopping.invoke({"query": "이벤트", "display": 2})
+    assert "유료 정상 상품" in res
+    assert "10,000원" in res
+    assert "무료배포 상품" not in res
+
+
+@patch("src.modules.naver_shopping.client.requests.get")
+def test_search_naver_shopping_all_zero_price_items(mock_get):
+    mock_get.return_value.status_code = 200
+    mock_get.return_value.json.return_value = {
+        "items": [
+            {
+                "title": "0원 상품 1",
+                "link": "https://shopping.naver.com/free1",
+                "lprice": "0",
+                "mallName": "이벤트몰"
+            },
+            {
+                "title": "0원 상품 2",
+                "link": "https://shopping.naver.com/free2",
+                "lprice": "-500",
+                "mallName": "비정상몰"
+            }
+        ]
+    }
+    res = search_naver_shopping.invoke({"query": "0원", "display": 2})
+    assert "네이버 쇼핑 검색 결과가 없습니다" in res
 
 
 @patch("src.modules.naver_shopping.client.requests.get")

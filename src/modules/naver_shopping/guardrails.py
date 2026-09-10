@@ -17,10 +17,17 @@ class NaverShoppingGuardrail(BaseGuardrail):
             end_d = str(args.get("end_date", ""))
             if not re.match(date_regex, start_d) or not re.match(date_regex, end_d):
                 return GuardrailResult(passed=False, error_message="날짜는 YYYY-MM-DD 형식이어야 합니다.")
+            if start_d > end_d:
+                return GuardrailResult(passed=False, error_message="start_date는 end_date보다 이전이거나 같아야 합니다.")
         elif tool_name == "search_naver_shopping":
-            display = args.get("display")
-            if display is None:
+            display_raw = args.get("display")
+            if display_raw is None:
                 display = 5
+            else:
+                try:
+                    display = int(display_raw)
+                except (ValueError, TypeError):
+                    return GuardrailResult(passed=False, error_message="display는 1 이상 10 이하여야 합니다.")
             if display > 10 or display < 1:
                 return GuardrailResult(passed=False, error_message="display는 1 이상 10 이하여야 합니다.")
             sort = args.get("sort")

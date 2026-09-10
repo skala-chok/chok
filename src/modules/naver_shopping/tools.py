@@ -19,12 +19,16 @@ def search_naver_shopping(query: str, display: int = 5, sort: str = "sim") -> st
             price_val = it.get("lprice")
             try:
                 price = int(price_val or 0)
-                price_str = f"{price:,}원"
             except (ValueError, TypeError):
-                price_str = f"{price_val}원" if price_val else "가격 정보 없음"
+                price = 0
+            if price <= 0:
+                continue
+            price_str = f"{price:,}원"
             output.append(
                 f"- 상품명: {title}\n  최저가: {price_str}\n  쇼핑몰: {it.get('mallName')}\n  링크: {it.get('link')}"
             )
+        if not output:
+            return "네이버 쇼핑 검색 결과가 없습니다."
         return "\n\n".join(output)
     except Exception as e:
         return f"네이버 쇼핑 검색 실패: {str(e)}"
