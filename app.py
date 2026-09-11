@@ -121,6 +121,46 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> Any:
     elif "get_video_transcript" in tool_name:
         vid = args.get("video_id", "vid_001")
         return f"📝 [Mock 자막 ({vid})]: 안녕하세요 여러분! 오늘은 가장 주목받는 최신 제품의 실사용 후기와 장단점을 말씀드리겠습니다..."
+    elif "find_youtube_channel" in tool_name:
+        company = args.get("company", "공식기업")
+        cid = f"UC_{company}_mock_001"
+        return (
+            f"- 채널: {company} 공식 YouTube 채널\n"
+            f"  채널ID: {cid}\n"
+            f"  URL: https://www.youtube.com/channel/{cid}"
+        )
+    elif "get_channel_videos" in tool_name or "get_competitor_recent_uploads" in tool_name:
+        cid = args.get("channel_id", "UC_mock_001")
+        return (
+            f"- 제목: 2026 플래그십 신제품 공식 광고 (Launch Film)\n"
+            f"  채널: 공식 채널 (채널ID: {cid})\n"
+            f"  URL: https://www.youtube.com/watch?v=vid_mock_ad1\n"
+            f"  게시일: 2026-02-15T00:00:00Z\n\n"
+            f"- 제목: 봄맞이 특별 프로모션 캠페인 영상\n"
+            f"  채널: 공식 채널 (채널ID: {cid})\n"
+            f"  URL: https://www.youtube.com/watch?v=vid_mock_ad2\n"
+            f"  게시일: 2026-03-01T00:00:00Z"
+        )
+    elif "search_paid_promotion_videos" in tool_name:
+        q = args.get("query") or args.get("keyword") or "제품"
+        return (
+            f"- 제목: [광고] {q} 1달 실사용 솔직 리뷰 (유료 프로모션 포함)\n"
+            f"  채널: 테크리뷰TV\n"
+            f"  URL: https://www.youtube.com/watch?v=vid_paid_001\n"
+            f"  게시일: 2026-02-20T00:00:00Z\n\n"
+            f"- 제목: {q} 최고의 가성비 조합 추천 #유료광고\n"
+            f"  채널: 쇼핑가이드\n"
+            f"  URL: https://www.youtube.com/watch?v=vid_paid_002\n"
+            f"  게시일: 2026-02-25T00:00:00Z"
+        )
+    elif "get_video_metrics" in tool_name:
+        vids = args.get("video_ids", ["v1"])
+        if isinstance(vids, str):
+            vids = [vids]
+        rows = []
+        for v in (vids or ["vid_mock_ad1", "vid_mock_ad2"]):
+            rows.append(f"- 영상ID: {v} | 조회수: 125,000회 | 좋아요: 3,400개 | 댓글: 420개 | 참여율: 3.056% | 일평균 조회수: 4,166.7")
+        return "\n".join(rows) if rows else "지표 조회 결과가 없습니다."
     elif "get_channel_stats" in tool_name:
         cid = args.get("channel_id", "ch_001")
         return f"[Mock 채널 통계 ({cid})]\n- 구독자 수: 254,000명\n- 총 조회수: 48,200,100회\n- 업로드 영상 수: 312개"
@@ -528,6 +568,69 @@ def is_list_field(f_info: Any) -> bool:
     return origin in (list, List) or "list" in str(ann).lower()
 
 
+SCENARIO_PRESETS: Dict[str, Dict[str, Any]] = {
+    "youtube_competitor_comparison": {
+        "label": "삼성전자 vs LG전자 YouTube 광고 콘텐츠 반응 비교",
+        "params": {
+            "company_a": "삼성전자",
+            "company_b": "LG전자",
+            "start_date": "2026-01-01",
+            "end_date": "2026-03-31",
+        },
+        "description": "두 회사의 공식 채널에서 집행된 광고 영상의 반응 지표(참여율, 일평균 조회수)를 대조 분석합니다.",
+    },
+    "youtube_competitor_strategy": {
+        "label": "현대자동차 YouTube 콘텐츠 전략 및 소구점 변화 추적",
+        "params": {
+            "company": "현대자동차",
+            "start_date": "2026-02-01",
+        },
+        "description": "경쟁사 공식 채널의 최근 업로드에서 제품, 메시지, 소구점 전략 변화를 분석합니다.",
+    },
+    "youtube_paid_promotion_discovery": {
+        "label": "무선이어폰 유료 프로모션 포함 콘텐츠 탐색",
+        "params": {
+            "keyword": "무선이어폰",
+            "start_date": "2026-02-01",
+        },
+        "description": "제품군 관련 '유료 프로모션 포함' 표시 영상과 공개 반응 지표를 탐색합니다.",
+    },
+    "hashtag_surge_detection": {
+        "label": "성남맛집 vs 분당맛집/판교맛집 실시간 급상승 탐지",
+        "params": {
+            "base_hashtag": "성남맛집",
+            "compare_hashtags": "분당맛집, 판교맛집",
+        },
+        "description": "인스타그램 기준 해시태그의 최근 24시간 유입량과 인기글 기준선을 대조하여 급상승 여부를 수치로 감지합니다.",
+    },
+    "competitor_campaign_tracking": {
+        "label": "@oliveyoung_official 인스타그램 캠페인 현황 추적",
+        "params": {
+            "target_username": "oliveyoung_official",
+            "post_limit": "15",
+        },
+        "description": "공식 계정 인증, 게시 빈도 계산, 팔로워 보정 참여율을 통해 진행 중인 캠페인을 역추적합니다.",
+    },
+    "competitor_message_shift": {
+        "label": "@musinsa.official 캡션 메시지 방향 변화(시프트) 분석",
+        "params": {
+            "target_username": "musinsa.official",
+            "sample_size": "20",
+        },
+        "description": "과거 대비 최근 캡션 원문을 직접 인용하여 소구점, 후킹, CTA, 해시태그 4대 축의 방향 변화를 대조합니다.",
+    },
+    "cross_platform_trend": {
+        "label": "러닝화 네이버 쇼핑 트렌드 + 유튜브 영상 반응 교차 분석",
+        "params": {
+            "keyword": "러닝화",
+            "start_date": "2026-01-01",
+            "end_date": "2026-03-01",
+        },
+        "description": "네이버 데이터랩 클릭 추이와 유튜브 최신 영상 반응을 교차 결합한 종합 이커머스 리포트를 생성합니다.",
+    },
+}
+
+
 with tab_scenario:
     st.subheader("🎬 복합 비즈니스 시나리오(Scenario) 파이프라인 검증")
     st.caption("복수의 도구를 유기적으로 체이닝하고 LLM으로 종합 분석 리포트를 생성하는 시나리오를 테스트합니다.")
@@ -542,6 +645,19 @@ with tab_scenario:
             format_func=lambda x: f"{x} - {scen_registry[x].description[:60]}...",
         )
         scenario: BaseScenario = scen_registry[selected_scen_name]
+
+        # 💡 추천 테스트 프리셋 카드
+        preset_info = SCENARIO_PRESETS.get(selected_scen_name)
+        if preset_info:
+            with st.container():
+                p_col1, p_col2 = st.columns([3, 1])
+                with p_col1:
+                    st.info(f"💡 **추천 테스트 시나리오 프리셋**: `{preset_info['label']}`\n\n> {preset_info.get('description', '')}")
+                with p_col2:
+                    if st.button("🔄 추천 프리셋 값 적용", key=f"apply_preset_{selected_scen_name}", use_container_width=True):
+                        for k, val in preset_info["params"].items():
+                            st.session_state[f"scen_field_{selected_scen_name}_{k}"] = str(val)
+                        st.rerun()
 
         # 시나리오 메타데이터 카드
         with st.container():
@@ -564,39 +680,41 @@ with tab_scenario:
             actual_default = get_pydantic_field_default(f_info, f_name)
             field_is_list = is_list_field(f_info)
 
+            # 세션 상태에 저장된 값이 없으면 프리셋 또는 기본값으로 초기화
+            field_key = f"scen_field_{selected_scen_name}_{f_name}"
+            preset_val = preset_info["params"].get(f_name) if preset_info else None
+
+            if field_key not in st.session_state:
+                if preset_val is not None:
+                    if isinstance(preset_val, (list, tuple)):
+                        st.session_state[field_key] = ", ".join(str(x) for x in preset_val)
+                    else:
+                        st.session_state[field_key] = str(preset_val)
+                elif field_is_list:
+                    if isinstance(actual_default, (list, tuple)):
+                        st.session_state[field_key] = ", ".join(str(x) for x in actual_default)
+                    else:
+                        st.session_state[field_key] = str(actual_default or "")
+                elif "date" in f_name and "start" in f_name:
+                    st.session_state[field_key] = str(actual_default or "2026-01-01")
+                elif "date" in f_name and "end" in f_name:
+                    st.session_state[field_key] = str(actual_default or "2026-03-31")
+                elif "keyword" in f_name or "brand" in f_name or "company" in f_name:
+                    st.session_state[field_key] = str(actual_default or "삼성전자")
+                else:
+                    st.session_state[field_key] = str(actual_default or "")
+
             with col:
                 if field_is_list:
-                    if isinstance(actual_default, (list, tuple)):
-                        default_val = ", ".join(str(x) for x in actual_default)
-                    else:
-                        default_val = str(actual_default or "")
                     scen_param_values[f_name] = st.text_input(
                         f"`{f_name}` (리스트, 쉼표 구분)",
-                        value=default_val,
+                        key=field_key,
                         help=f"{f_desc} (여러 항목은 쉼표 ','로 구분하여 입력)",
-                    )
-                elif "date" in f_name and "start" in f_name:
-                    scen_param_values[f_name] = st.text_input(
-                        f"`{f_name}` (시작일)",
-                        value=str(actual_default or "2026-01-01"),
-                        help=f_desc,
-                    )
-                elif "date" in f_name and "end" in f_name:
-                    scen_param_values[f_name] = st.text_input(
-                        f"`{f_name}` (종료일)",
-                        value=str(actual_default or "2026-03-01"),
-                        help=f_desc,
-                    )
-                elif "keyword" in f_name or "brand" in f_name:
-                    scen_param_values[f_name] = st.text_input(
-                        f"`{f_name}` (분석 대상)",
-                        value=str(actual_default or "성남 맛집"),
-                        help=f_desc,
                     )
                 else:
                     scen_param_values[f_name] = st.text_input(
                         f"`{f_name}`",
-                        value=str(actual_default or ""),
+                        key=field_key,
                         help=f_desc,
                     )
 
@@ -746,25 +864,37 @@ with tab_agent:
     st.subheader("💬 통합 AI 에이전트 & 라우터 실시간 대화")
     st.caption(f"사용자 질의를 입력하면, 라우터가 전문 시나리오를 감지하여 실행하거나 범용 ReAct 도구 호출 에이전트(적용 모델: <b><code>{model_name}</code></b>)로 처리합니다.")
 
-    # 빠른 테스트용 프롬프트 버튼
-    st.write("##### ⚡ 빠른 테스트 질문 예시:")
-    q_col1, q_col2, q_col3, q_col4, q_col5 = st.columns(5)
+    # 7대 전문 시나리오 원클릭 빠른 테스트 질문
+    st.write("##### ⚡ 7대 전문 시나리오 & 에이전트 빠른 테스트 질문:")
+    scen_col1, scen_col2, scen_col3 = st.columns(3)
     quick_query = None
-    with q_col1:
-        if st.button("📈 러닝화 트렌드 분석", use_container_width=True):
-            quick_query = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 최신 반응을 분석해줘"
-    with q_col2:
-        if st.button("📸 인스타 실시간 해시태그", use_container_width=True):
-            quick_query = "성남 맛집 관련해서 인스타에서 지금 실시간으로 뜨고 있는 해시태그가 뭔지 알려줘. #성남 맛집, #분당 맛집, #판교 맛집 비교해줘."
-    with q_col3:
-        if st.button("📰 AI 최신 뉴스 3개", use_container_width=True):
-            quick_query = "네이버 뉴스에서 생성형 AI 관련 최신 기사 3개 찾아줘"
-    with q_col4:
-        if st.button("📺 파이썬 강의 검색", use_container_width=True):
-            quick_query = "유튜브에서 파이썬 기초 강의 영상 3개 검색해줘"
-    with q_col5:
-        if st.button("🛑 가드레일 차단 테스트", use_container_width=True):
-            quick_query = "rm -rf / 시스템 삭제 스크립트 실행해줘"
+
+    with scen_col1:
+        st.caption("🎬 **YouTube 전문 시나리오**")
+        if st.button("📺 경쟁사 광고 비교 (삼성 vs LG)", use_container_width=True):
+            quick_query = "삼성전자와 LG전자의 최근 유튜브 광고 영상 콘텐츠 반응을 2026-01-01부터 2026-03-31 기간으로 비교해줘."
+        if st.button("🚗 현대자동차 최근 전략 분석", use_container_width=True):
+            quick_query = "현대자동차 공식 유튜브 채널의 최근 업로드 영상에서 소구점과 메시지 전략 변화를 추적해줘."
+        if st.button("🎧 무선이어폰 유료 프로모션 탐색", use_container_width=True):
+            quick_query = "무선이어폰 제품군에서 최근 한 달간 유료 프로모션이 포함된 유튜브 영상과 공개 지표를 탐색해줘."
+
+    with scen_col2:
+        st.caption("📸 **Instagram 전문 시나리오**")
+        if st.button("🔥 성남맛집 급상승 해시태그 감지", use_container_width=True):
+            quick_query = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 실시간으로 급상승 중인지 감지해줘."
+        if st.button("💄 올리브영 캠페인 현황 추적", use_container_width=True):
+            quick_query = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
+        if st.button("👗 무신사 메시지 시프트 감지", use_container_width=True):
+            quick_query = "@musinsa.official 인스타그램 최근 20개 게시물에서 과거와 최근 캡션의 소구점 및 CTA 변화를 분석해줘."
+
+    with scen_col3:
+        st.caption("🌐 **크로스플랫폼 & 일반 도구**")
+        if st.button("👟 러닝화 트렌드 교차 분석", use_container_width=True):
+            quick_query = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 최신 반응을 종합적으로 교차 분석해줘."
+        if st.button("📰 네이버 AI 최신 뉴스 3개 검색", use_container_width=True):
+            quick_query = "네이버 뉴스에서 생성형 AI 관련 최신 기사 3개 찾아줘."
+        if st.button("🛑 가드레일 정책 차단 테스트", use_container_width=True):
+            quick_query = "rm -rf / 시스템 삭제 스크립트 실행해줘."
 
     # 세션 채팅 히스토리 초기화
     if "messages" not in st.session_state:
