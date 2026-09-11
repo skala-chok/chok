@@ -28,7 +28,7 @@ def test_full_registry_discovery():
 
 
 def test_agent_runner_initialization_with_all_modules(monkeypatch):
-    """모든 API 키가 주어졌을 때 4개 모듈이 모두 활성화되고 총 8개 도구가 등록되는지 검증."""
+    """모든 API 키가 주어졌을 때 4개 모듈이 모두 활성화되고 총 14개 도구가 등록되는지 검증."""
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_client_id")
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_client_secret")
@@ -39,8 +39,8 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert len(enabled) == 4
 
     runner = AgentRunner(registry=registry, llm=MagicMock())
-    # 2 tools per module * 4 modules = 8 tools
-    assert len(runner.tools) == 8
+    # yt_search(2) + yt_analytics(2) + naver_search(2) + naver_shopping(8) = 14 tools
+    assert len(runner.tools) == 14
 
     tool_names = {t.name for t in runner.tools}
     expected_tools = {
@@ -52,6 +52,12 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
         "search_naver_news",
         "search_naver_shopping",
         "get_shopping_trends",
+        "get_shopping_category_trend",
+        "get_shopping_category_gender_trend",
+        "get_shopping_category_age_trend",
+        "get_shopping_keyword_trend",
+        "get_shopping_keyword_gender_trend",
+        "get_shopping_keyword_age_trend",
     }
     assert tool_names == expected_tools
 
@@ -90,7 +96,8 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     assert {m.name for m in enabled_naver} == {"naver_search", "naver_shopping"}
 
     runner_naver = AgentRunner(registry=registry_naver, llm=MagicMock())
-    assert len(runner_naver.tools) == 4
+    # naver_search(2) + naver_shopping(8) = 10 tools
+    assert len(runner_naver.tools) == 10
 
     # 3. No API keys provided
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)

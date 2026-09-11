@@ -7,7 +7,16 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.naver_shopping.module import NaverShoppingModule
-from src.modules.naver_shopping.tools import search_naver_shopping, get_shopping_trends
+from src.modules.naver_shopping.tools import (
+    search_naver_shopping,
+    get_shopping_trends,
+    get_shopping_category_trend,
+    get_shopping_category_gender_trend,
+    get_shopping_category_age_trend,
+    get_shopping_keyword_trend,
+    get_shopping_keyword_gender_trend,
+    get_shopping_keyword_age_trend,
+)
 from src.modules.naver_shopping.guardrails import NaverShoppingGuardrail
 from src.modules.naver_shopping.context import NaverShoppingContextProvider
 from src.modules.naver_shopping.client import NaverShoppingClient
@@ -19,10 +28,16 @@ def test_naver_shopping_module_metadata():
     assert mod.name == "naver_shopping"
     assert "쇼핑" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 2
+    assert len(tools) == 8
     tool_names = [t.name for t in tools]
     assert "search_naver_shopping" in tool_names
     assert "get_shopping_trends" in tool_names
+    assert "get_shopping_category_trend" in tool_names
+    assert "get_shopping_category_gender_trend" in tool_names
+    assert "get_shopping_category_age_trend" in tool_names
+    assert "get_shopping_keyword_trend" in tool_names
+    assert "get_shopping_keyword_gender_trend" in tool_names
+    assert "get_shopping_keyword_age_trend" in tool_names
 
     guardrails = mod.get_guardrails()
     assert len(guardrails) == 1
@@ -355,11 +370,14 @@ def test_client_search_shop_params(mock_get, monkeypatch):
     client = NaverShoppingClient()
     res = client.search_shop("노트북", display=3, sort="dsc")
 
+    # ⚠️ search_shop은 구 openapi.naver.com 엔드포인트를 그대로 가리키고 있어, NAVER API HUB
+    # 키로는 실제로 401이 난다 (client.py 상단 주석 참고). 여기서는 현재 코드가 보내는
+    # 요청 내용(공유 headers 프로퍼티가 NCP 포맷으로 바뀐 것)을 그대로 회귀 검증한다.
     mock_get.assert_called_once_with(
         "https://openapi.naver.com/v1/search/shop.json",
         headers={
-            "X-Naver-Client-Id": "test_id",
-            "X-Naver-Client-Secret": "test_secret",
+            "X-NCP-APIGW-API-KEY-ID": "test_id",
+            "X-NCP-APIGW-API-KEY": "test_secret",
             "Content-Type": "application/json",
         },
         params={"query": "노트북", "display": 3, "sort": "dsc"},
@@ -381,10 +399,10 @@ def test_client_get_datalab_trend_params(mock_post, monkeypatch):
     res = client.get_datalab_trend(["노트북", "태블릿"], "2026-01-01", "2026-02-01")
 
     mock_post.assert_called_once_with(
-        "https://openapi.naver.com/v1/datalab/search",
+        "https://naverapihub.apigw.ntruss.com/search-trend/v1/search",
         headers={
-            "X-Naver-Client-Id": "test_id",
-            "X-Naver-Client-Secret": "test_secret",
+            "X-NCP-APIGW-API-KEY-ID": "test_id",
+            "X-NCP-APIGW-API-KEY": "test_secret",
             "Content-Type": "application/json",
         },
         json={
@@ -399,6 +417,175 @@ def test_client_get_datalab_trend_params(mock_post, monkeypatch):
         timeout=5,
     )
     assert res == {"results": []}
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_category_trend_params(mock_post, monkeypatch):
+    monkeypatch.setattr("src.modules.naver_shopping.client.settings.NAVER_CLIENT_ID", "test_id")
+    monkeypatch.setattr("src.modules.naver_shopping.client.settings.NAVER_CLIENT_SECRET", "test_secret")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"results": []}
+    mock_post.return_value = mock_resp
+
+    client = NaverShoppingClient()
+    client.get_category_trend(
+        {"패션의류": "50000000", "화장품/미용": "50000002"}, "2026-01-01", "2026-05-31", gender="f", ages=["20", "30"]
+    )
+
+    mock_post.assert_called_once_with(
+        "https://naverapihub.apigw.ntruss.com/shopping/v1/categories",
+        headers={
+            "X-NCP-APIGW-API-KEY-ID": "test_id",
+            "X-NCP-APIGW-API-KEY": "test_secret",
+            "Content-Type": "application/json",
+        },
+        json={
+            "startDate": "2026-01-01",
+            "endDate": "2026-05-31",
+            "timeUnit": "month",
+            "category": [
+                {"name": "패션의류", "param": ["50000000"]},
+                {"name": "화장품/미용", "param": ["50000002"]},
+            ],
+            "gender": "f",
+            "ages": ["20", "30"],
+        },
+        timeout=5,
+    )
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_tool_get_shopping_category_trend(mock_post):
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "results": [{"title": "패션의류", "data": [{"period": "2026-01-01", "ratio": 100}]}]
+    }
+    res = get_shopping_category_trend.invoke(
+        {"categories": "패션의류:50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "패션의류" in res
+    assert "100" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_tool_get_shopping_category_gender_trend(mock_post):
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "results": [{"title": "50000000", "data": [{"period": "2026-01-01", "group": "f", "ratio": 92.4}]}]
+    }
+    res = get_shopping_category_gender_trend.invoke(
+        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "(f)" in res
+    assert "92.4" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_tool_get_shopping_category_age_trend(mock_post):
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "results": [{"title": "50000000", "data": [{"period": "2026-01-01", "group": "30", "ratio": 44.1}]}]
+    }
+    res = get_shopping_category_age_trend.invoke(
+        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "(30)" in res
+    assert "44.1" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_tool_get_shopping_keyword_trend(mock_post):
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "results": [{"title": "니트", "data": [{"period": "2026-01-01", "ratio": 79.4}]}]
+    }
+    res = get_shopping_keyword_trend.invoke(
+        {
+            "category_code": "50000000",
+            "keywords": "니트:니트,코트:코트",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+        }
+    )
+    assert "니트" in res
+    assert "79.4" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_tool_get_shopping_keyword_gender_trend(mock_post):
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "results": [{"title": "니트", "data": [{"period": "2026-01-01", "group": "f", "ratio": 100}]}]
+    }
+    res = get_shopping_keyword_gender_trend.invoke(
+        {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "(f)" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_tool_get_shopping_keyword_age_trend(mock_post):
+    mock_post.return_value.status_code = 200
+    mock_post.return_value.json.return_value = {
+        "results": [{"title": "니트", "data": [{"period": "2026-01-01", "group": "40", "ratio": 100}]}]
+    }
+    res = get_shopping_keyword_age_trend.invoke(
+        {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "(40)" in res
+
+
+def test_shopping_insight_guardrail_validation():
+    guard = NaverShoppingGuardrail()
+
+    # 2017-08-01 이전 날짜 차단
+    res = guard.validate_tool_args(
+        "get_shopping_category_trend",
+        {"categories": "패션의류:50000000", "start_date": "2017-01-01", "end_date": "2017-02-01"},
+    )
+    assert res.passed is False
+    assert "2017-08-01" in res.error_message
+
+    # category 3개 초과 차단
+    res_over = guard.validate_tool_args(
+        "get_shopping_category_trend",
+        {
+            "categories": "a:1,b:2,c:3,d:4",
+            "start_date": "2026-01-01",
+            "end_date": "2026-02-01",
+        },
+    )
+    assert res_over.passed is False
+    assert "최대 3개" in res_over.error_message
+
+    # keyword 5개 초과 차단
+    res_kw_over = guard.validate_tool_args(
+        "get_shopping_keyword_trend",
+        {
+            "category_code": "50000000",
+            "keywords": "a:1,b:2,c:3,d:4,e:5,f:6",
+            "start_date": "2026-01-01",
+            "end_date": "2026-02-01",
+        },
+    )
+    assert res_kw_over.passed is False
+    assert "최대 5개" in res_kw_over.error_message
+
+    # 잘못된 time_unit 차단
+    res_time_unit = guard.validate_tool_args(
+        "get_shopping_category_gender_trend",
+        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-02-01", "time_unit": "year"},
+    )
+    assert res_time_unit.passed is False
+    assert "time_unit" in res_time_unit.error_message
+
+    # 정상 케이스 통과
+    res_ok = guard.validate_tool_args(
+        "get_shopping_category_trend",
+        {"categories": "패션의류:50000000", "start_date": "2026-01-01", "end_date": "2026-02-01"},
+    )
+    assert res_ok.passed is True
 
 
 def test_naver_shopping_registry_discovery():

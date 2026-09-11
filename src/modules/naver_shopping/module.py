@@ -8,7 +8,16 @@ from typing import List
 from langchain_core.tools import BaseTool
 from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
 from src.config import settings
-from .tools import search_naver_shopping, get_shopping_trends
+from .tools import (
+    search_naver_shopping,
+    get_shopping_trends,
+    get_shopping_category_trend,
+    get_shopping_category_gender_trend,
+    get_shopping_category_age_trend,
+    get_shopping_keyword_trend,
+    get_shopping_keyword_gender_trend,
+    get_shopping_keyword_age_trend,
+)
 from .guardrails import NaverShoppingGuardrail
 from .context import NaverShoppingContextProvider
 
@@ -27,7 +36,16 @@ class NaverShoppingModule(BaseAgentModule):
 
     def get_tools(self) -> List[BaseTool]:
         # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
-        return [search_naver_shopping, get_shopping_trends]
+        return [
+            search_naver_shopping,
+            get_shopping_trends,
+            get_shopping_category_trend,
+            get_shopping_category_gender_trend,
+            get_shopping_category_age_trend,
+            get_shopping_keyword_trend,
+            get_shopping_keyword_gender_trend,
+            get_shopping_keyword_age_trend,
+        ]
 
     def get_guardrails(self) -> List[BaseGuardrail]:
         return [NaverShoppingGuardrail()]

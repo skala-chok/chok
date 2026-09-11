@@ -210,10 +210,10 @@ def test_client_search_blog_params(mock_get, monkeypatch):
     res = client.search_blog("맛집", display=3, sort="date")
 
     mock_get.assert_called_once_with(
-        "https://openapi.naver.com/v1/search/blog.json",
+        "https://naverapihub.apigw.ntruss.com/search/v1/blog",
         headers={
-            "X-Naver-Client-Id": "test_id",
-            "X-Naver-Client-Secret": "test_secret",
+            "X-NCP-APIGW-API-KEY-ID": "test_id",
+            "X-NCP-APIGW-API-KEY": "test_secret",
         },
         params={"query": "맛집", "display": 3, "sort": "date"},
         timeout=5,
@@ -234,10 +234,10 @@ def test_client_search_news_params(mock_get, monkeypatch):
     res = client.search_news("속보", display=4, sort="sim")
 
     mock_get.assert_called_once_with(
-        "https://openapi.naver.com/v1/search/news.json",
+        "https://naverapihub.apigw.ntruss.com/search/v1/news",
         headers={
-            "X-Naver-Client-Id": "test_id",
-            "X-Naver-Client-Secret": "test_secret",
+            "X-NCP-APIGW-API-KEY-ID": "test_id",
+            "X-NCP-APIGW-API-KEY": "test_secret",
         },
         params={"query": "속보", "display": 4, "sort": "sim"},
         timeout=5,
