@@ -30,6 +30,26 @@ class HashtagSurgeDetectionParams(BaseModel):
         default_factory=lambda: ["#성남 맛집", "#분당 맛집", "#판교 맛집"],
         description="비교 대상 해시태그 목록 (예: ['#성남 맛집', '#분당 맛집', '#판교 맛집'])",
     )
+    hours_range: int = Field(
+        default=24,
+        description="분석 대상 시간 범위 (단위: 시간, 기본값: 24). 사용자가 '최근 6시간', '12시간' 등을 언급하면 해당 수치, 언급이 없으면 24.",
+    )
+
+    @field_validator("hours_range", mode="before")
+    @classmethod
+    def parse_hours_range(cls, v: Any) -> int:
+        if v is None or v == "" or v == "PydanticUndefined":
+            return 24
+        if isinstance(v, str):
+            digits = re.findall(r"\d+", v)
+            if digits:
+                return int(digits[0])
+            return 24
+        try:
+            val = int(v)
+            return val if val > 0 else 24
+        except Exception:
+            return 24
 
     @field_validator("compare_hashtags", mode="before")
     @classmethod
@@ -60,12 +80,13 @@ class HashtagItemMetric(BaseModel):
     raw_input: str = Field(description="사용자 입력 원본 태그")
     normalized_query: str = Field(description="공백 및 '#' 제거 정규화 검색어")
     hashtag_id: Optional[str] = Field(default=None, description="인스타그램 해시태그 고유 ID")
-    recent_media_count: int = Field(default=0, description="최근 24시간 내 수집된 게시물 수")
-    recent_avg_engagement: float = Field(default=0.0, description="최근 24시간 평균 참여도 (좋아요+댓글)")
+    time_window_hours: int = Field(default=24, description="분석에 적용된 시간 범위 (시간)")
+    recent_media_count: int = Field(default=0, description="최근 지정 시간 내 수집된 게시물 수")
+    recent_avg_engagement: float = Field(default=0.0, description="최근 지정 시간 평균 참여도 (좋아요+댓글)")
     top_media_count: int = Field(default=0, description="누적 인기글 수집 수")
     top_avg_engagement: float = Field(default=0.0, description="누적 인기글 평균 참여도 기준선 (좋아요+댓글)")
     surge_ratio: float = Field(default=1.0, description="기준선 대비 최근 참여도 비율 (recent / top)")
-    sample_sufficient: bool = Field(default=True, description="24시간 내 표본 수 충분 여부 (5건 이상)")
+    sample_sufficient: bool = Field(default=True, description="시간 내 표본 수 충분 여부 (5건 이상)")
     is_surging: bool = Field(default=False, description="수치 근거 기반 급상승 판정 여부")
     status_note: str = Field(default="", description="통계적 판정 상태 및 유의사항")
 
@@ -74,6 +95,8 @@ class HashtagSurgeDetectionReport(BaseModel):
     """급상승 해시태그 최종 분석 구조화 리포트."""
 
     base_keyword: str
+    time_window_hours: int = Field(default=24, description="적용된 분석 시간 범위 (시간)")
+    hours_notice: Optional[str] = Field(default=None, description="시간 범위 관련 특이사항 고지")
     normalization_mappings: Dict[str, str] = Field(description="정규화 매핑 (입력값 -> q=정규화키워드)")
     metrics: List[HashtagItemMetric]
     surging_tag: Optional[str] = Field(default=None, description="최종 급상승 판정 해시태그")
@@ -141,6 +164,15 @@ class HashtagSurgeDetectionScenario(BaseScenario):
         recent_tool = tools.get("get_hashtag_recent_media")
         top_tool = tools.get("get_hashtag_top_media")
 
+        effective_hours = params.hours_range if (isinstance(params.hours_range, int) and params.hours_range > 0) else 24
+        capped_hours = min(effective_hours, 24)
+        hours_notice = None
+        if effective_hours > 24:
+            hours_notice = (
+                f"Instagram Graph API는 recent_media에 대해 최근 최대 24시간 이내 게시물만 제공하므로, "
+                f"요청하신 {effective_hours}시간 범위 대신 API 최대 한도인 24시간으로 조회되었습니다."
+            )
+
         tags_to_compare = params.compare_hashtags or [params.base_keyword]
         # 쿼터 체크: 7일 롤링 30개 제한 안내
         quota_notice = (
@@ -176,20 +208,28 @@ class HashtagSurgeDetectionScenario(BaseScenario):
             if not ht_id:
                 ht_id = f"fallback_ht_{norm_query}"
 
-            # Step 2: 최신글 조회 (recent_media = 현재 24h 온도)
+            # Step 2: 최신글 조회 (recent_media = 현재 시간대 온도)
             recent_count = 0
             recent_avg = 0.0
             recent_raw = ""
             if recent_tool:
                 try:
-                    recent_res = recent_tool.invoke({"hashtag_id": ht_id})
+                    recent_res = recent_tool.invoke({"hashtag_id": ht_id, "hours_range": effective_hours})
                     recent_raw = str(recent_res)
                     r_stats = self._extract_media_metrics(recent_raw)
                     recent_count = r_stats["count"]
                     recent_avg = r_stats["avg_engagement"]
-                    detailed_tool_logs.append(f"[{raw_tag} 최신글(recent_media)]:\n{recent_res}")
-                except Exception as e:
-                    logger.warning("최신글 조회 실패 (%s): %s", ht_id, e)
+                    detailed_tool_logs.append(f"[{raw_tag} 최신글(recent_media, {capped_hours}h)]:\n{recent_res}")
+                except Exception:
+                    try:
+                        recent_res = recent_tool.invoke({"hashtag_id": ht_id})
+                        recent_raw = str(recent_res)
+                        r_stats = self._extract_media_metrics(recent_raw)
+                        recent_count = r_stats["count"]
+                        recent_avg = r_stats["avg_engagement"]
+                        detailed_tool_logs.append(f"[{raw_tag} 최신글(recent_media)]:\n{recent_res}")
+                    except Exception as e2:
+                        logger.warning("최신글 조회 실패 (%s): %s", ht_id, e2)
 
             # Step 3: 누적 인기글 조회 (top_media = 비교 기준선 baseline)
             top_count = 0
@@ -214,13 +254,13 @@ class HashtagSurgeDetectionScenario(BaseScenario):
             is_surging = False
             if not sample_sufficient:
                 status_note = (
-                    f"24시간 내 게시물 수({recent_count}건)가 5건 미만으로 부족하여 "
+                    f"최근 {capped_hours}시간 내 게시물 수({recent_count}건)가 5건 미만으로 부족하여 "
                     f"통계적으로 급상승 여부를 단정할 수 없음 (표본 부족)"
                 )
             elif surge_ratio >= 1.2:
                 is_surging = True
                 status_note = (
-                    f"급상승 감지됨: 최근 24h 평균 참여도({recent_avg:.1f})가 "
+                    f"급상승 감지됨: 최근 {capped_hours}h 평균 참여도({recent_avg:.1f})가 "
                     f"인기글 기준선({top_avg:.1f}) 대비 {surge_ratio:.2f}배로 상승"
                 )
             else:
@@ -233,6 +273,7 @@ class HashtagSurgeDetectionScenario(BaseScenario):
                     raw_input=raw_tag,
                     normalized_query=norm_query,
                     hashtag_id=ht_id,
+                    time_window_hours=capped_hours,
                     recent_media_count=recent_count,
                     recent_avg_engagement=recent_avg,
                     top_media_count=top_count,
@@ -253,12 +294,14 @@ class HashtagSurgeDetectionScenario(BaseScenario):
 
         # 필수 준수 Disclaimers
         disclaimers = [
-            "Instagram Graph API는 recent_media에 대해 최근 24시간 이내 게시물만 제공하므로, '최근 한 달 상승세' 등 기간별 시계열 추이 데이터는 제공되지 않음을 명시합니다.",
-            "지역 해시태그는 24시간 내 게시물 표본 수가 적을 수 있으며, 표본 부족 시 급상승 여부를 단정하지 않습니다.",
+            f"Instagram Graph API는 recent_media에 대해 최근 24시간 이내 게시물만 제공하므로, '최근 한 달 상승세' 등 기간별 시계열 추이 데이터는 제공되지 않음을 명시합니다. (현재 적용: 최근 {capped_hours}시간)",
+            f"지역 해시태그는 최근 {capped_hours}시간 내 게시물 표본 수가 적을 수 있으며, 표본 부족 시 급상승 여부를 단정하지 않습니다.",
             "해시태그 조회 결과에는 작성자 정보가 일절 포함되지 않으므로 특정 가게명이나 계정을 추측하여 서술하지 않습니다.",
             "해시태그 쿼터(7일 롤링 30개)를 준수하며 임의로 키워드를 무제한 확장하지 않습니다.",
-            "최신글(recent_media, 현재 24h 유입)과 인기글(top_media, 누적 기준선)은 엄격히 분리되어 대조되었습니다.",
+            f"최신글(recent_media, 최근 {capped_hours}h 유입)과 인기글(top_media, 누적 기준선)은 엄격히 분리되어 대조되었습니다.",
         ]
+        if hours_notice:
+            disclaimers.append(hours_notice)
 
         # 마크다운 리포트 조립
         md_lines = [
@@ -269,10 +312,15 @@ class HashtagSurgeDetectionScenario(BaseScenario):
         for raw, norm in normalization_mappings.items():
             md_lines.append(f"- `{raw}` $\\rightarrow$ `{norm}`")
 
+        md_lines.append(f"- **분석 시간 범위**: 최근 **{capped_hours}시간** (설정값: {params.hours_range}h, 기본 24h)")
+        if hours_notice:
+            md_lines.append(f"> ⚠️ **시간 범위 고지**: {hours_notice}\n")
+
         md_lines.append(f"\n> **쿼터 안내**: {quota_notice}\n")
 
+        table_header_time = f"{capped_hours}h"
         md_lines.append("### 2. 해시태그별 실시간 온도 대조 분석표")
-        md_lines.append("| 해시태그 | 정규화 쿼리 | 최신글 수(24h) | 최신글 평균참여도 | 인기글 기준선 참여도 | 급상승 배율 | 통계 판정 |")
+        md_lines.append(f"| 해시태그 | 정규화 쿼리 | 최신글 수({table_header_time}) | 최신글 평균참여도 | 인기글 기준선 참여도 | 급상승 배율 | 통계 판정 |")
         md_lines.append("| :--- | :--- | :---: | :---: | :---: | :---: | :--- |")
 
         for m in metrics_list:
@@ -301,6 +349,8 @@ class HashtagSurgeDetectionScenario(BaseScenario):
         # 구조화 리포트 인스턴스 생성
         report_obj = HashtagSurgeDetectionReport(
             base_keyword=params.base_keyword,
+            time_window_hours=capped_hours,
+            hours_notice=hours_notice,
             normalization_mappings=normalization_mappings,
             metrics=metrics_list,
             surging_tag=surging_tag,

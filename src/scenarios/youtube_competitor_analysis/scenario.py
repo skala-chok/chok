@@ -8,8 +8,17 @@ from pydantic import BaseModel, Field
 from src.core.scenario import BaseScenario
 
 
-def _ids(output: str, pattern: str) -> List[str]:
+def _ids(output: Any, pattern: str) -> List[str]:
+    if isinstance(output, list):
+        return [item.get("video_id", "") for item in output if isinstance(item, dict)]
     return re.findall(pattern, output)
+
+
+def _channel_id(output: Any) -> str:
+    if isinstance(output, list) and output and isinstance(output[0], dict):
+        return output[0].get("channel_id", "")
+    matches = re.findall(r"채널ID: ([\w-]+)", str(output))
+    return matches[0] if matches else ""
 
 
 def _run(tools: Dict[str, BaseTool], name: str, **kwargs: Any) -> str:
@@ -42,9 +51,9 @@ class CompetitorComparisonScenario(BaseScenario):
         return ["find_youtube_channel", "get_channel_videos", "get_video_metrics"]
 
     def execute(self, params: CompetitorComparisonParams, tools: Dict[str, BaseTool], context: Optional[Dict[str, Any]] = None) -> str:
-        channels = [_run(tools, "find_youtube_channel", company=company) for company in (params.company_a, params.company_b)]
-        channel_ids = [_ids(result, r"채널ID: ([\\w-]+)")[0] if _ids(result, r"채널ID: ([\\w-]+)") else "" for result in channels]
-        videos = [_run(tools, "get_channel_videos", channel_id=channel_id, start_date=params.start_date, end_date=params.end_date) for channel_id in channel_ids]
+        channels = [_run(tools, "find_youtube_channel", company_name=company) for company in (params.company_a, params.company_b)]
+        channel_ids = [_channel_id(result) for result in channels]
+        videos = [_run(tools, "get_channel_videos", channel_id=channel_id, published_after=f"{params.start_date}T00:00:00Z", keyword="광고") for channel_id in channel_ids]
         metrics = [_run(tools, "get_video_metrics", video_ids=_ids(result, r"watch\\?v=([\\w-]+)")) for result in videos]
         return (
             f"### {params.company_a} vs {params.company_b} YouTube 광고 콘텐츠 비교\n"
@@ -110,9 +119,8 @@ class CompetitorStrategyScenario(BaseScenario):
         return ["find_youtube_channel", "get_competitor_recent_uploads", "get_video_metrics"]
 
     def execute(self, params: CompetitorStrategyParams, tools: Dict[str, BaseTool], context: Optional[Dict[str, Any]] = None) -> str:
-        channels = _run(tools, "find_youtube_channel", company=params.company)
-        channel_ids = _ids(channels, r"채널ID: ([\\w-]+)")
-        videos = _run(tools, "get_competitor_recent_uploads", channel_id=channel_ids[0] if channel_ids else "", start_date=params.start_date)
+        channels = _run(tools, "find_youtube_channel", company_name=params.company)
+        videos = _run(tools, "get_competitor_recent_uploads", channel_id=_channel_id(channels), published_after=f"{params.start_date}T00:00:00Z")
         metrics = _run(tools, "get_video_metrics", video_ids=_ids(videos, r"watch\\?v=([\\w-]+)"))
         return (
             f"### {params.company} 최근 콘텐츠 전략\n기간: {params.start_date} ~ 현재\n\n"
