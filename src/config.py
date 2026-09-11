@@ -1,5 +1,9 @@
-from typing import Optional
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional, Tuple, Type
+from pydantic_settings import (
+    BaseSettings,
+    SettingsConfigDict,
+    PydanticBaseSettingsSource,
+)
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -7,6 +11,17 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore"
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        return (init_settings, dotenv_settings, env_settings, file_secret_settings)
 
     # Core LLM
     OPENAI_API_KEY: Optional[str] = None
