@@ -653,13 +653,13 @@ SCENARIO_PRESETS: Dict[str, Dict[str, Any]] = {
         "description": "과거 대비 최근 캡션 원문을 직접 인용하여 소구점, 후킹, CTA, 해시태그 4대 축의 방향 변화를 대조합니다.",
     },
     "cross_platform_trend": {
-        "label": "러닝화 네이버 쇼핑 트렌드 + 유튜브 영상 반응 교차 분석",
+        "label": "러닝화 네이버 쇼핑 트렌드 + 유튜브 영상 + 인스타그램 해시태그 반응 교차 분석",
         "params": {
             "keyword": "러닝화",
             "start_date": "2026-01-01",
             "end_date": "2026-03-01",
         },
-        "description": "네이버 데이터랩 클릭 추이와 유튜브 최신 영상 반응을 교차 결합한 종합 이커머스 리포트를 생성합니다.",
+        "description": "네이버 쇼핑 트렌드, 유튜브 영상 콘텐츠, 인스타그램 해시태그 소셜 반응을 3각 교차 분석하는 종합 이커머스 리포트를 생성합니다.",
     },
     "naver_new_product_keyword_trend": {
         "label": "스킨/토너 신제품 키워드 트렌드 조사 (분야 + 세부 키워드)",
@@ -957,7 +957,7 @@ with tab_agent:
     with scen_col3:
         st.caption("🌐 **크로스플랫폼 & 일반 도구**")
         if st.button("👟 러닝화 트렌드 교차 분석", use_container_width=True):
-            quick_query = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 최신 반응을 종합적으로 교차 분석해줘."
+            quick_query = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 영상 반응, 인스타그램 해시태그 소셜 반응을 종합적으로 교차 분석해줘."
         if st.button("📰 네이버 AI 최신 뉴스 3개 검색", use_container_width=True):
             quick_query = "네이버 뉴스에서 생성형 AI 관련 최신 기사 3개 찾아줘."
         if st.button("🛑 가드레일 정책 차단 테스트", use_container_width=True):
@@ -1049,10 +1049,16 @@ with tab_agent:
                             log_status("🔧 **[도구 실행]** `get_shopping_trends` (파라미터: `{'keywords': '러닝화', 'start_date': '2026-01-01', 'end_date': '2026-03-01'}`)")
                             time.sleep(0.2)
                             log_status("✅ **[도구 완료]** `get_shopping_trends` (0.08초) - 네이버 쇼핑 데이터랩 수집 완료")
-                            log_status("🔧 **[도구 실행]** `search_youtube_videos` (파라미터: `{'query': '러닝화 추천 트렌드', 'max_results': 5}`)")
+                            log_status("🔧 **[도구 실행]** `search_youtube_videos` (파라미터: `{'query': '러닝화', 'max_results': 3}`)")
                             time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `search_youtube_videos` (0.15초) - 관련 동영상 5건 수집 완료")
-                            log_status("⚙️ **[종합 분석 리포트 생성]** 크로스 플랫폼 트렌드 및 시사점 도출")
+                            log_status("✅ **[도구 완료]** `search_youtube_videos` (0.12초) - 관련 동영상 3건 수집 완료")
+                            log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '러닝화'}`)")
+                            time.sleep(0.15)
+                            log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - 해시태그 ID: `ht_mock_러닝화` 획득")
+                            log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_mock_러닝화'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.11초) - 누적 인기 게시물 5건 수집 완료")
+                            log_status("⚙️ **[종합 분석 리포트 생성]** 3개 플랫폼(네이버+유튜브+인스타그램) 크로스 트렌드 및 시사점 도출")
                             status_box.update(label=f"✅ 크로스 플랫폼 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
 
                             kw = "러닝화" if "러닝화" in user_input else "트렌드 상품"
@@ -1063,8 +1069,10 @@ with tab_agent:
                                 f"- '{kw}'의 상대 검색비율은 최근 **84.5%**로 전월 대비 가파른 상승세를 보이고 있습니다.\n\n"
                                 f"#### 2. 🎬 유튜브 미디어 반응 요약\n"
                                 f"- 최신 실착 리뷰 및 가성비 추천 영상 조회수가 10만 회를 돌파하며 높은 관심도를 반영하고 있습니다.\n\n"
-                                f"#### 3. 💡 비즈니스 시사점\n"
-                                f"- 봄 시즌 진입과 함께 야외 활동 관련 검색량이 급증하고 있으므로, 관련 기획전 및 콘텐츠 마케팅 집중 투자가 권장됩니다."
+                                f"#### 3. 📸 인스타그램 해시태그 소셜 반응 요약\n"
+                                f"- #{kw} 누적 인기 게시물의 평균 참여도(좋아요+댓글)는 52.0으로 소셜 상에서 활발한 인증 문화가 형성되어 있습니다.\n\n"
+                                f"#### 4. 💡 비즈니스 시사점\n"
+                                f"- 검색(네이버) $\\rightarrow$ 영상 리뷰(유튜브) $\\rightarrow$ 피드 인증(인스타그램)의 3단계 고객 여정을 고려한 옴니채널 마케팅 집중 투자가 권장됩니다."
                             )
                         else:
                             log_status(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
