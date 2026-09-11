@@ -391,89 +391,58 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> Any:
 
 
 # ==============================================================================
-# ⚙️ 4. 사이드바: 시스템 환경 및 API 키 관리
+# ⚙️ 4. 사이드바: 모델 및 API 키 설정
 # ==============================================================================
+all_mods = mod_registry.get_all_modules()
+all_scens = scen_registry.get_all_scenarios()
+
 with st.sidebar:
-    st.title("SKALA 제어판")
-    st.caption("SK AI Leader Academy | Multi-Worker Platform")
-
-    st.markdown("---")
-    st.subheader("🤖 LLM 모델 설정")
-    model_name = st.text_input(
-        "적용 LLM 모델명",
-        value=settings.MODEL_NAME or "gpt-4o",
-        help="에이전트 ReAct 루프 및 시나리오 리포트 생성에 사용되는 기본 언어 모델입니다.",
-    )
-    st.markdown(
-        f'<div class="info-card">'
-        f'🧠 <b>현재 적용 모델</b>: <code>{model_name}</code><br>'
-        f'🌡️ <b>Temperature</b>: <code>{settings.TEMPERATURE}</code>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("---")
-    st.subheader("🔑 외부 API 키 설정")
-    st.info("환경변수(.env)가 우선 적용되며, 필요 시 여기서 덮어쓸 수 있습니다.")
-
-    openai_key = st.text_input(
-        "OpenAI API Key",
-        value=settings.OPENAI_API_KEY or "",
-        type="password",
-        help=f"{model_name} 등 LLM 추론 및 시나리오 라우터에 사용",
-    )
-    insta_token = st.text_input(
-        "Instagram Access Token",
-        value=settings.INSTAGRAM_ACCESS_TOKEN or "",
-        type="password",
-        help="Instagram Graph API User Access Token",
-    )
-    insta_user_id = st.text_input(
-        "Instagram User ID",
-        value=settings.INSTAGRAM_USER_ID or "",
-        type="password",
-        help="Instagram Professional/Business 계정 ID",
-    )
-    naver_id = st.text_input(
-        "Naver Client ID",
-        value=settings.NAVER_CLIENT_ID or "",
-        type="password",
-    )
-    naver_secret = st.text_input(
-        "Naver Client Secret",
-        value=settings.NAVER_CLIENT_SECRET or "",
-        type="password",
-    )
-    yt_key = st.text_input(
-        "YouTube API Key",
-        value=settings.YOUTUBE_API_KEY or "",
-        type="password",
-    )
-
-    st.markdown("---")
-    st.subheader("🧪 실행 옵션")
     use_mock_mode = st.toggle(
         "🎭 Mock(모의) 데이터 모드",
         value=not bool(settings.OPENAI_API_KEY),
         help="API 키가 없거나 쿼터를 아끼고 싶을 때 사전 정의된 목업 응답으로 테스트합니다.",
     )
 
-    st.markdown("---")
-    st.subheader("📊 시스템 등록 현황")
-    all_mods = mod_registry.get_all_modules()
-    all_scens = scen_registry.get_all_scenarios()
-    
-    total_tools = sum(len(m.get_tools()) for m in all_mods)
-    st.write(f"• **등록 모듈**: {len(all_mods)}개")
-    st.write(f"• **보유 도구**: {total_tools}개")
-    st.write(f"• **비즈니스 시나리오**: {len(all_scens)}개")
-    st.write(f"• **LLM 모델**: `{model_name}`")
+    model_name = st.text_input(
+        "적용 LLM 모델명",
+        value=settings.MODEL_NAME or "gpt-4o",
+        help="에이전트 ReAct 루프 및 시나리오 리포트 생성에 사용되는 기본 언어 모델입니다.",
+    )
 
-    with st.expander("모듈별 상태 보기"):
-        for m in all_mods:
-            enabled = m.is_enabled() or use_mock_mode
-            status_badge = "🟢 활성" if enabled else "🔴 비활성 (키 누락)"
-            st.markdown(f"**{m.name}** ({len(m.get_tools())} tools)<br>`{status_badge}`", unsafe_allow_html=True)
+    with st.expander("🔑 외부 API 키 설정", expanded=not bool(settings.OPENAI_API_KEY)):
+        openai_key = st.text_input(
+            "OpenAI API Key",
+            value=settings.OPENAI_API_KEY or "",
+            type="password",
+            help=f"{model_name} 등 LLM 추론 및 시나리오 라우터에 사용",
+        )
+        insta_token = st.text_input(
+            "Instagram Access Token",
+            value=settings.INSTAGRAM_ACCESS_TOKEN or "",
+            type="password",
+            help="Instagram Graph API User Access Token",
+        )
+        insta_user_id = st.text_input(
+            "Instagram User ID",
+            value=settings.INSTAGRAM_USER_ID or "",
+            type="password",
+            help="Instagram Professional/Business 계정 ID",
+        )
+        naver_id = st.text_input(
+            "Naver Client ID",
+            value=settings.NAVER_CLIENT_ID or "",
+            type="password",
+        )
+        naver_secret = st.text_input(
+            "Naver Client Secret",
+            value=settings.NAVER_CLIENT_SECRET or "",
+            type="password",
+        )
+        yt_key = st.text_input(
+            "YouTube API Key",
+            value=settings.YOUTUBE_API_KEY or "",
+            type="password",
+        )
 
 
 
