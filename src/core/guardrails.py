@@ -1,10 +1,24 @@
+import html
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional
 from langchain_core.tools import BaseTool, StructuredTool
 from .base import BaseGuardrail
 
 logger = logging.getLogger("skala.guardrail")
+
+_EMAIL_RE = re.compile(r"[\w\.-]+@[\w\.-]+\.\w+")
+_PHONE_RE = re.compile(r"01[016789]-?\d{3,4}-?\d{4}")
+_HTML_TAG_RE = re.compile(r"<.*?>")
+
+
+def sanitize_text(text: str) -> str:
+    """공통 사후 출력 정제: HTML 태그 제거, 엔티티 언이스케이프, 이메일 및 국내 전화번호 마스킹."""
+    clean = _HTML_TAG_RE.sub("", text)
+    clean = html.unescape(clean)
+    clean = _EMAIL_RE.sub("[EMAIL_MASKED]", clean)
+    return _PHONE_RE.sub("[PHONE_MASKED]", clean)
 
 
 def wrap_tool_with_guardrails(

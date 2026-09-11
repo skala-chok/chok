@@ -7,7 +7,7 @@
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
-from src.modules.naver_shopping.module import NaverShoppingModule
+from src.modules.naver_shopping.module import NaverShoppingModule, NaverShoppingContextProvider
 from src.modules.naver_shopping.tools import (
     find_naver_category_code,
     get_shopping_trends,
@@ -19,7 +19,6 @@ from src.modules.naver_shopping.tools import (
     get_shopping_keyword_age_trend,
 )
 from src.modules.naver_shopping.guardrails import NaverShoppingGuardrail
-from src.modules.naver_shopping.context import NaverShoppingContextProvider
 from src.modules.naver_shopping.client import NaverCategoryLookup, NaverShoppingClient
 from src.core.guardrails import wrap_tool_with_guardrails
 

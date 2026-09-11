@@ -4,6 +4,7 @@
 # ➔ 다음 단계: 🟠 [Step 2] guardrails.py 로 이동하여 0원 상품 필터링 등 가드레일을 작성하세요.
 # ==============================================================================
 
+import functools
 import json
 import logging
 from pathlib import Path
@@ -18,50 +19,33 @@ logger = logging.getLogger(__name__)
 _CATEGORY_DATA_PATH = Path(__file__).resolve().parent / "data" / "naver_category_codes.json"
 
 
+@functools.lru_cache(maxsize=1)
+def _load_categories() -> List[Dict[str, Any]]:
+    with open(_CATEGORY_DATA_PATH, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def search_naver_category(keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """키워드를 세분류(가장 구체적인 분류)부터 대분류 순으로 매칭해 후보를 반환한다."""
+    keyword = keyword.strip()
+    if not keyword:
+        return []
+
+    exact_leaf, partial = [], []
+    for rec in _load_categories():
+        names = rec["names"]
+        leaf = names[-1] if names else ""
+        if leaf == keyword:
+            exact_leaf.append(rec)
+        elif any(keyword in name for name in names):
+            partial.append(rec)
+
+    return [{"code": rec["code"], "path": " > ".join(rec["names"])} for rec in (exact_leaf + partial)[:limit]]
+
+
 class NaverCategoryLookup:
-    """네이버쇼핑 전체 카테고리 코드(대/중/소/세분류)를 로컬 JSON에서 검색하는 조회기.
-
-    외부 API가 아니라 사전에 다운로드해둔 정적 카테고리 목록(5,002건)을 사용한다.
-    사용자가 category_code를 직접 몰라도 "러닝화"처럼 자연어 키워드로 후보를 찾을 수 있게 한다.
-    """
-
-    _cache: Optional[List[Dict[str, Any]]] = None
-
-    @classmethod
-    def _load(cls) -> List[Dict[str, Any]]:
-        if cls._cache is None:
-            with open(_CATEGORY_DATA_PATH, encoding="utf-8") as f:
-                cls._cache = json.load(f)
-        return cls._cache
-
-    @classmethod
-    def search(cls, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """키워드를 세분류(가장 구체적인 분류)부터 대분류 순으로 매칭해 후보를 반환한다.
-
-        Args:
-            keyword: 검색할 상품/분야 키워드 (예: "러닝화").
-            limit: 반환할 최대 후보 수.
-
-        Returns:
-            [{"code": str, "path": "대분류 > 중분류 > 소분류 > 세분류"}, ...].
-            세분류(가장 구체적인 단계) 완전일치를 최우선으로, 그다음 부분일치 순으로 정렬한다.
-        """
-        keyword = keyword.strip()
-        if not keyword:
-            return []
-
-        records = cls._load()
-        exact_leaf, partial = [], []
-        for rec in records:
-            names = rec["names"]
-            leaf = names[-1] if names else ""
-            if leaf == keyword:
-                exact_leaf.append(rec)
-            elif any(keyword in name for name in names):
-                partial.append(rec)
-
-        ordered = exact_leaf + partial
-        return [{"code": rec["code"], "path": " > ".join(rec["names"])} for rec in ordered[:limit]]
+    """네이버쇼핑 전체 카테고리 코드 조회기 (search_naver_category 래퍼)."""
+    search = staticmethod(search_naver_category)
 
 
 class NaverShoppingClient:
@@ -86,10 +70,6 @@ class NaverShoppingClient:
             "X-NCP-APIGW-API-KEY": csec or "",
             "Content-Type": "application/json",
         }
-
-    @headers.setter
-    def headers(self, value: Dict[str, str]):
-        self._headers = value
 
     def _get_fallback_trend_data(self, label: str) -> Dict[str, Any]:
         """OpenAPI 실패 시 반환할 표준 스키마의 폴백 목 데이터 (handoff/04_testing_harness.md 3.3)."""
@@ -164,6 +144,31 @@ class NaverShoppingClient:
         label = ", ".join(categories.keys()) if categories else "분야"
         return self._post_shopping_insight("categories", self._with_optional(body, device, gender, ages), label)
 
+    def _request_demographic_trend(
+        self,
+        dimension: str,
+        category_code: str,
+        start_date: str,
+        end_date: str,
+        time_unit: str = "month",
+        keyword: Optional[str] = None,
+        device: Optional[str] = None,
+        gender: Optional[str] = None,
+        ages: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        path = f"category/keyword/{dimension}" if keyword else f"category/{dimension}"
+        body: Dict[str, Any] = {
+            "startDate": start_date,
+            "endDate": end_date,
+            "timeUnit": time_unit,
+            "category": category_code,
+        }
+        if keyword:
+            body["keyword"] = keyword
+        return self._post_shopping_insight(
+            path, self._with_optional(body, device, gender, ages), keyword or category_code
+        )
+
     def get_category_gender_trend(
         self,
         category_code: str,
@@ -174,9 +179,8 @@ class NaverShoppingClient:
         ages: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """POST /shopping/v1/category/gender - 특정 분야의 성별 클릭 트렌드"""
-        body = {"startDate": start_date, "endDate": end_date, "timeUnit": time_unit, "category": category_code}
-        return self._post_shopping_insight(
-            "category/gender", self._with_optional(body, device, None, ages), category_code
+        return self._request_demographic_trend(
+            "gender", category_code, start_date, end_date, time_unit, device=device, ages=ages
         )
 
     def get_category_age_trend(
@@ -189,9 +193,8 @@ class NaverShoppingClient:
         gender: Optional[str] = None,
     ) -> Dict[str, Any]:
         """POST /shopping/v1/category/age - 특정 분야의 연령별 클릭 트렌드"""
-        body = {"startDate": start_date, "endDate": end_date, "timeUnit": time_unit, "category": category_code}
-        return self._post_shopping_insight(
-            "category/age", self._with_optional(body, device, gender, None), category_code
+        return self._request_demographic_trend(
+            "age", category_code, start_date, end_date, time_unit, device=device, gender=gender
         )
 
     def get_category_keyword_trend(
@@ -229,15 +232,8 @@ class NaverShoppingClient:
         ages: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """POST /shopping/v1/category/keyword/gender - 특정 키워드의 성별 클릭 트렌드"""
-        body = {
-            "startDate": start_date,
-            "endDate": end_date,
-            "timeUnit": time_unit,
-            "category": category_code,
-            "keyword": keyword,
-        }
-        return self._post_shopping_insight(
-            "category/keyword/gender", self._with_optional(body, device, None, ages), keyword
+        return self._request_demographic_trend(
+            "gender", category_code, start_date, end_date, time_unit, keyword=keyword, device=device, ages=ages
         )
 
     def get_keyword_age_trend(
@@ -251,13 +247,6 @@ class NaverShoppingClient:
         gender: Optional[str] = None,
     ) -> Dict[str, Any]:
         """POST /shopping/v1/category/keyword/age - 특정 키워드의 연령별 클릭 트렌드"""
-        body = {
-            "startDate": start_date,
-            "endDate": end_date,
-            "timeUnit": time_unit,
-            "category": category_code,
-            "keyword": keyword,
-        }
-        return self._post_shopping_insight(
-            "category/keyword/age", self._with_optional(body, device, gender, None), keyword
+        return self._request_demographic_trend(
+            "age", category_code, start_date, end_date, time_unit, keyword=keyword, device=device, gender=gender
         )

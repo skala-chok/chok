@@ -5,11 +5,10 @@
 # ➔ 다음 단계: 🟡 [Step 3] tools.py 로 이동하여 LLM 도구를 정의하세요.
 # ==============================================================================
 
-import html
-import re
 from typing import Any, Dict
 
 from src.core.base import BaseGuardrail, GuardrailResult
+from src.core.guardrails import sanitize_text
 
 
 class NaverSearchGuardrail(BaseGuardrail):
@@ -33,14 +32,4 @@ class NaverSearchGuardrail(BaseGuardrail):
         return GuardrailResult(passed=True)
 
     def sanitize_output(self, tool_name: str, output: Any) -> Any:
-        if isinstance(output, str):
-            # Remove HTML tags (e.g. <b>, </b>)
-            clean = re.sub(r"<.*?>", "", output)
-            # Decode HTML entities (e.g. &quot;, &amp;, &lt;, &gt;)
-            clean = html.unescape(clean)
-            # Mask email addresses (블로그/뉴스 본문에 포함될 수 있는 개인정보)
-            clean = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[EMAIL_MASKED]", clean)
-            # Mask Korean phone numbers (010-XXXX-XXXX 등)
-            clean = re.sub(r"01[016789]-?\d{3,4}-?\d{4}", "[PHONE_MASKED]", clean)
-            return clean
-        return output
+        return sanitize_text(output) if isinstance(output, str) else output

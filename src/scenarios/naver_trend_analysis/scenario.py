@@ -56,6 +56,29 @@ def _resolve_category_code(tools: Dict[str, BaseTool], search_term: str, given_c
     return corrected, note
 
 
+def _resolve_category_or_error(
+    tools: Dict[str, BaseTool],
+    search_term: str,
+    given_code: str,
+    scenario_title: str,
+    missing_term_msg: str,
+    action_desc: str = "조회를",
+) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """category_code 자동 조회·검증 및 에러 조기 반환 헬퍼."""
+    if not search_term or not search_term.strip():
+        return None, None, f"### {scenario_title}\n❌ {missing_term_msg}"
+    category_code, code_note = _resolve_category_code(tools, search_term, given_code)
+    if not category_code:
+        note_block = f"{code_note}\n\n" if code_note else ""
+        return None, None, (
+            f"### {scenario_title}\n"
+            f"{note_block}"
+            f"❌ category_code를 확정하지 못해 {action_desc} 진행할 수 없습니다. "
+            "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
+        )
+    return category_code, code_note, None
+
+
 def _pick_search_term(*candidates: str) -> str:
     """category_name 등 1순위 후보가 비어 있으면 다음 후보(키워드 등)로 넘어간다."""
     for c in candidates:
@@ -108,6 +131,26 @@ def _top_segment(points: List[Tuple[str, Optional[str], float]]) -> Optional[Tup
     return top_group, grouped[top_group]
 
 
+def _top_segment_from_series(raw_text: str) -> Optional[Tuple[str, float]]:
+    """raw_text 시계열 데이터에서 가장 관심도가 높은 (세그먼트, ratio)를 추출한다."""
+    candidates = [_top_segment(pts) for pts in _parse_series(raw_text).values()]
+    valid = [c for c in candidates if c is not None]
+    return max(valid, key=lambda c: c[1]) if valid else None
+
+
+def _format_disclaimers(disclaimers: List[str]) -> List[str]:
+    return [f"{i}. {d}" for i, d in enumerate(disclaimers, 1)]
+
+
+def _build_overview(title: str, items: List[Tuple[str, str]]) -> List[str]:
+    return [
+        f"# 📊 {title}\n",
+        "### 1. 조회 개요",
+        *(f"- {k}: {v}" for k, v in items),
+        "",
+    ]
+
+
 def _series_table(
     series: Dict[str, List[Tuple[str, Optional[str], float]]],
     group_header: Optional[str] = None,
@@ -119,10 +162,7 @@ def _series_table(
         lines = [f"| 항목 | 구간 | {group_header} | ratio |", "| :--- | :--- | :---: | ---: |"]
         for title, points in series.items():
             for period, group, ratio in points:
-                if group_header == "성별":
-                    group_disp = _GENDER_KR.get(group, group or "-")
-                else:
-                    group_disp = f"{group}대" if group else "-"
+                group_disp = _GENDER_KR.get(group, group or "-") if group_header == "성별" else f"{group}대" if group else "-"
                 lines.append(f"| {title} | {period} | {group_disp} | {ratio} |")
     else:
         lines = ["| 항목 | 구간 | ratio |", "| :--- | :--- | ---: |"]
@@ -142,52 +182,49 @@ def _build_new_product_trend_report(
     keyword_result: str,
 ) -> str:
     """신제품 키워드 트렌드 조사 결과를 표·섹션 중심의 마크다운 리포트로 조립한다."""
-    category_series = _parse_series(category_result)
-    overall_series = _parse_series(overall_result)
     keyword_series = _parse_series(keyword_result)
-
     direction_lines = [f"- {title}: {_trend_direction(points)}" for title, points in keyword_series.items()]
     rising = [t for t, p in keyword_series.items() if _trend_direction(p).startswith("상승")]
     falling = [t for t, p in keyword_series.items() if _trend_direction(p).startswith("하락")]
     steady = [t for t, p in keyword_series.items() if _trend_direction(p).startswith("보합")]
 
-    lines = [
-        f"# 📊 [{display_name}] 신제품 키워드 트렌드 조사 리포트\n",
-        "### 1. 조회 개요",
-        f"- 분야: {display_name} (category_code={category_code})",
-        f"- 조회 기간: {start_date} ~ {end_date}",
-        "",
-        "### 2. 분야 전체 클릭 트렌드 (네이버쇼핑 영역)",
-    ]
-    lines.extend(_series_table(category_series))
-    lines.append("")
-    lines.append("### 3. 통합검색 기준 키워드 전체 관심도")
-    lines.extend(_series_table(overall_series))
-    lines.append("")
-    lines.append("### 4. 쇼핑 영역 기준 세부 키워드 비교")
-    lines.extend(_series_table(keyword_series))
-    lines.append("")
-    lines.append("### 5. 추세 판정 및 결론")
+    conclusion = []
     if direction_lines:
-        lines.extend(direction_lines)
-        lines.append("")
+        conclusion.extend(direction_lines)
+        conclusion.append("")
         if rising:
-            lines.append(f"- **상승 키워드**: {', '.join(rising)}")
+            conclusion.append(f"- **상승 키워드**: {', '.join(rising)}")
         if falling:
-            lines.append(f"- **하락 키워드**: {', '.join(falling)}")
+            conclusion.append(f"- **하락 키워드**: {', '.join(falling)}")
         if steady:
-            lines.append(f"- **보합 키워드**: {', '.join(steady)}")
+            conclusion.append(f"- **보합 키워드**: {', '.join(steady)}")
     else:
-        lines.append("데이터 부족으로 추세 판정 불가")
-    lines.append("")
-    lines.append("### 6. 데이터 해석 시 유의사항 (Disclaimers)")
-    disclaimers = [
-        "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량을 의미하지 않습니다.",
-        "통합검색 기준 관심도(3번)와 네이버쇼핑 영역 기준 관심도(2·4번)는 서로 다른 모수이므로 직접 비교하지 않습니다.",
-        "데이터에 없는 키워드나 수치는 지어내지 않았습니다.",
+        conclusion.append("데이터 부족으로 추세 판정 불가")
+
+    lines = [
+        *_build_overview(
+            f"[{display_name}] 신제품 키워드 트렌드 조사 리포트",
+            [("분야", f"{display_name} (category_code={category_code})"), ("조회 기간", f"{start_date} ~ {end_date}")],
+        ),
+        "### 2. 분야 전체 클릭 트렌드 (네이버쇼핑 영역)",
+        *_series_table(_parse_series(category_result)),
+        "",
+        "### 3. 통합검색 기준 키워드 전체 관심도",
+        *_series_table(_parse_series(overall_result)),
+        "",
+        "### 4. 쇼핑 영역 기준 세부 키워드 비교",
+        *_series_table(keyword_series),
+        "",
+        "### 5. 추세 판정 및 결론",
+        *conclusion,
+        "",
+        "### 6. 데이터 해석 시 유의사항 (Disclaimers)",
+        *_format_disclaimers([
+            "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량을 의미하지 않습니다.",
+            "통합검색 기준 관심도(3번)와 네이버쇼핑 영역 기준 관심도(2·4번)는 서로 다른 모수이므로 직접 비교하지 않습니다.",
+            "데이터에 없는 키워드나 수치는 지어내지 않았습니다.",
+        ]),
     ]
-    for idx, d in enumerate(disclaimers, 1):
-        lines.append(f"{idx}. {d}")
     return "\n".join(lines)
 
 
@@ -207,36 +244,6 @@ def _build_target_audience_report(
 ) -> str:
     """타겟 오디언스 검증 결과를 표·섹션 중심의 마크다운 리포트로 조립한다."""
     target_kr = f"{_GENDER_KR.get(target_gender, target_gender)} · {target_age}대"
-    lines = [
-        f"# 📊 [{display_name} / {keyword}] 타겟 오디언스 검증 리포트\n",
-        "### 1. 조회 개요",
-        f"- 분야: {display_name} (category_code={category_code})",
-        f"- 검증 키워드: {keyword}",
-        f"- 설정 타겟: {target_kr}",
-        f"- 조회 기간: {start_date} ~ {end_date}",
-        "",
-        "### 2. 분야 전체 기준 실제 관심도",
-        "**성별**",
-    ]
-    lines.extend(_series_table(_parse_series(category_gender), group_header="성별"))
-    lines.append("")
-    lines.append("**연령대**")
-    lines.extend(_series_table(_parse_series(category_age), group_header="연령대"))
-    lines.append("")
-    lines.append(f"### 3. '{keyword}' 키워드 기준 실제 관심도")
-    lines.append("**성별**")
-    lines.extend(_series_table(_parse_series(keyword_gender), group_header="성별"))
-    lines.append("")
-    lines.append("**연령대**")
-    lines.extend(_series_table(_parse_series(keyword_age), group_header="연령대"))
-    lines.append("")
-    lines.append("### 4. 타겟 일치 여부 판정")
-    if checks:
-        lines.extend(checks)
-    else:
-        lines.append("판정 불가 (데이터 없음)")
-    lines.append("")
-    lines.append("### 5. 종합 결론")
     mismatches = [c for c in checks if "⚠️" in c]
     if not checks:
         verdict = "데이터가 부족해 타겟 적합성을 판단하기 어렵습니다."
@@ -246,16 +253,44 @@ def _build_target_audience_report(
         verdict = f"설정하신 타겟({target_kr})은 실제 검색·클릭 데이터와 맞지 않습니다."
     else:
         verdict = f"설정하신 타겟({target_kr})이 일부 기준에서는 맞지만 다른 기준에서는 어긋나는 혼재된 결과입니다."
-    lines.append(verdict)
-    lines.append("")
-    lines.append("### 6. 데이터 해석 시 유의사항 (Disclaimers)")
-    disclaimers = [
-        "ages 파라미터는 10세 단위로만 제공되어 그 이상의 세분화(예: 24세 단일 연령)는 불가능합니다.",
-        "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대적인 검색량이나 구매자 수가 아닙니다.",
-        "특정 구간의 일시적 변동만으로 타겟이 틀렸다고 성급히 단정하지 않습니다.",
+
+    lines = [
+        *_build_overview(
+            f"[{display_name} / {keyword}] 타겟 오디언스 검증 리포트",
+            [
+                ("분야", f"{display_name} (category_code={category_code})"),
+                ("검증 키워드", keyword),
+                ("설정 타겟", target_kr),
+                ("조회 기간", f"{start_date} ~ {end_date}"),
+            ],
+        ),
+        "### 2. 분야 전체 기준 실제 관심도",
+        "**성별**",
+        *_series_table(_parse_series(category_gender), group_header="성별"),
+        "",
+        "**연령대**",
+        *_series_table(_parse_series(category_age), group_header="연령대"),
+        "",
+        f"### 3. '{keyword}' 키워드 기준 실제 관심도",
+        "**성별**",
+        *_series_table(_parse_series(keyword_gender), group_header="성별"),
+        "",
+        "**연령대**",
+        *_series_table(_parse_series(keyword_age), group_header="연령대"),
+        "",
+        "### 4. 타겟 일치 여부 판정",
+        *(checks if checks else ["판정 불가 (데이터 없음)"]),
+        "",
+        "### 5. 종합 결론",
+        verdict,
+        "",
+        "### 6. 데이터 해석 시 유의사항 (Disclaimers)",
+        *_format_disclaimers([
+            "ages 파라미터는 10세 단위로만 제공되어 그 이상의 세분화(예: 24세 단일 연령)는 불가능합니다.",
+            "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대적인 검색량이나 구매자 수가 아닙니다.",
+            "특정 구간의 일시적 변동만으로 타겟이 틀렸다고 성급히 단정하지 않습니다.",
+        ]),
     ]
-    for idx, d in enumerate(disclaimers, 1):
-        lines.append(f"{idx}. {d}")
     return "\n".join(lines)
 
 
@@ -270,40 +305,43 @@ def _build_keyword_segmentation_report(
     age_top: Optional[Tuple[str, float]],
 ) -> str:
     """키워드 성별·연령 타겟팅 세분화 결과를 표·섹션 중심의 마크다운 리포트로 조립한다."""
-    lines = [
-        f"# 📊 '{keyword}' 검색자 성별·연령대 분포 리포트\n",
-        "### 1. 조회 개요",
-        f"- 키워드: {keyword} (category_code={category_code})",
-        f"- 조회 기간: {start_date} ~ {end_date}",
-        "",
-        "### 2. 성별 분포",
-    ]
-    lines.extend(_series_table(_parse_series(gender_result), group_header="성별"))
-    if gender_top:
-        gender_kr = _GENDER_KR.get(gender_top[0], gender_top[0])
-        lines.append(f"\n최고 관심 세그먼트: **{gender_kr}** (ratio {gender_top[1]})")
-    lines.append("")
-    lines.append("### 3. 연령대별 분포")
-    lines.extend(_series_table(_parse_series(age_result), group_header="연령대"))
-    if age_top:
-        lines.append(f"\n최고 관심 세그먼트: **{age_top[0]}대** (ratio {age_top[1]})")
-    lines.append("")
-    lines.append("### 4. 타겟팅 제안")
     if gender_top or age_top:
         gender_part = _GENDER_KR.get(gender_top[0], gender_top[0]) if gender_top else "판단 불가"
         age_part = f"{age_top[0]}대" if age_top else "판단 불가"
-        lines.append(f"- 광고 타겟팅은 **{gender_part}** · **{age_part}**를 중심으로 설정하는 것이 데이터상 가장 부합합니다.")
+        suggestion = [f"- 광고 타겟팅은 **{gender_part}** · **{age_part}**를 중심으로 설정하는 것이 데이터상 가장 부합합니다."]
     else:
-        lines.append("- 데이터가 부족해 타겟팅 제안을 하기 어렵습니다.")
-    lines.append("- 관심도가 낮게 나온 세그먼트라도 광고 타겟에서 완전히 배제할 근거로 보기는 어렵습니다.")
-    lines.append("")
-    lines.append("### 5. 데이터 해석 시 유의사항 (Disclaimers)")
-    disclaimers = [
-        "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대적인 검색량이나 구매자 수가 아닙니다.",
-        "성별과 연령별 분포는 서로 구분되며, 둘을 임의로 결합해 새로운 수치를 만들지 않습니다.",
+        suggestion = ["- 데이터가 부족해 타겟팅 제안을 하기 어렵습니다."]
+
+    lines = [
+        *_build_overview(
+            f"'{keyword}' 검색자 성별·연령대 분포 리포트",
+            [("키워드", f"{keyword} (category_code={category_code})"), ("조회 기간", f"{start_date} ~ {end_date}")],
+        ),
+        "### 2. 성별 분포",
+        *_series_table(_parse_series(gender_result), group_header="성별"),
     ]
-    for idx, d in enumerate(disclaimers, 1):
-        lines.append(f"{idx}. {d}")
+    if gender_top:
+        gender_kr = _GENDER_KR.get(gender_top[0], gender_top[0])
+        lines.append(f"\n최고 관심 세그먼트: **{gender_kr}** (ratio {gender_top[1]})")
+    lines.extend([
+        "",
+        "### 3. 연령대별 분포",
+        *_series_table(_parse_series(age_result), group_header="연령대"),
+    ])
+    if age_top:
+        lines.append(f"\n최고 관심 세그먼트: **{age_top[0]}대** (ratio {age_top[1]})")
+    lines.extend([
+        "",
+        "### 4. 타겟팅 제안",
+        *suggestion,
+        "- 관심도가 낮게 나온 세그먼트라도 광고 타겟에서 완전히 배제할 근거로 보기는 어렵습니다.",
+        "",
+        "### 5. 데이터 해석 시 유의사항 (Disclaimers)",
+        *_format_disclaimers([
+            "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대적인 검색량이나 구매자 수가 아닙니다.",
+            "성별과 연령별 분포는 서로 구분되며, 둘을 임의로 결합해 새로운 수치를 만들지 않습니다.",
+        ]),
+    ])
     return "\n".join(lines)
 
 
@@ -383,22 +421,14 @@ class NewProductKeywordTrendScenario(BaseScenario):
         search_term = _pick_search_term(params.category_name, *kw_list)
         display_name = params.category_name or search_term or "(분야 미지정)"
 
-        if not search_term:
-            return (
-                "### 신제품 키워드 트렌드 조사\n"
-                "❌ category_name과 keywords가 모두 비어 있어 카테고리를 조회할 수 없습니다. "
-                "분야명이나 상품 키워드를 알려주세요."
-            )
-
-        category_code, code_note = _resolve_category_code(tools, search_term, params.category_code)
-        if not category_code:
-            note_block = f"{code_note}\n\n" if code_note else ""
-            return (
-                f"### [{display_name}] 신제품 키워드 트렌드 조사\n"
-                f"{note_block}"
-                "❌ category_code를 확정하지 못해 분야/키워드별 조회를 진행할 수 없습니다. "
-                "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
-            )
+        category_code, code_note, err = _resolve_category_or_error(
+            tools, search_term, params.category_code,
+            f"[{display_name}] 신제품 키워드 트렌드 조사" if search_term else "신제품 키워드 트렌드 조사",
+            "category_name과 keywords가 모두 비어 있어 카테고리를 조회할 수 없습니다. 분야명이나 상품 키워드를 알려주세요.",
+            "분야/키워드별 조회를",
+        )
+        if err:
+            return err
 
         category_arg = f"{display_name}:{category_code}"
         category_result = _run(
@@ -485,22 +515,13 @@ class TargetAudienceValidationScenario(BaseScenario):
         search_term = _pick_search_term(params.category_name, params.keyword)
         display_name = params.category_name or search_term or "(분야 미지정)"
 
-        if not search_term:
-            return (
-                "### 타겟 오디언스 검증\n"
-                "❌ category_name과 keyword가 모두 비어 있어 카테고리를 조회할 수 없습니다. "
-                "분야명이나 상품 키워드를 알려주세요."
-            )
-
-        category_code, code_note = _resolve_category_code(tools, search_term, params.category_code)
-        if not category_code:
-            note_block = f"{code_note}\n\n" if code_note else ""
-            return (
-                f"### [{display_name} / {params.keyword}] 타겟 오디언스 검증\n"
-                f"{note_block}"
-                "❌ category_code를 확정하지 못해 조회를 진행할 수 없습니다. "
-                "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
-            )
+        category_code, code_note, err = _resolve_category_or_error(
+            tools, search_term, params.category_code,
+            f"[{display_name} / {params.keyword}] 타겟 오디언스 검증" if search_term else "타겟 오디언스 검증",
+            "category_name과 keyword가 모두 비어 있어 카테고리를 조회할 수 없습니다. 분야명이나 상품 키워드를 알려주세요.",
+        )
+        if err:
+            return err
 
         date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
 
@@ -516,12 +537,7 @@ class TargetAudienceValidationScenario(BaseScenario):
             (f"'{params.keyword}' 키워드 - 성별", keyword_gender, params.target_gender),
             (f"'{params.keyword}' 키워드 - 연령", keyword_age, params.target_age),
         ):
-            series = _parse_series(raw_text)
-            top = None
-            for points in series.values():
-                candidate = _top_segment(points)
-                if candidate and (top is None or candidate[1] > top[1]):
-                    top = candidate
+            top = _top_segment_from_series(raw_text)
             if top is None:
                 checks.append(f"- {label}: 판단 불가 (데이터 없음)")
             elif top[0] == target:
@@ -586,34 +602,21 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
         LAST_RUN_TOOL_RESULTS.clear()
-        if not params.keyword or not params.keyword.strip():
-            return "### 키워드 타겟팅 세분화\n❌ keyword가 비어 있어 조회할 수 없습니다. 검색 키워드를 알려주세요."
-
-        category_code, code_note = _resolve_category_code(tools, params.keyword, params.category_code)
-        if not category_code:
-            note_block = f"{code_note}\n\n" if code_note else ""
-            return (
-                f"### '{params.keyword}' 키워드 타겟팅 세분화\n"
-                f"{note_block}"
-                "❌ category_code를 확정하지 못해 조회를 진행할 수 없습니다. "
-                "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
-            )
+        kw = params.keyword.strip() if params.keyword else ""
+        category_code, code_note, err = _resolve_category_or_error(
+            tools, kw, params.category_code,
+            f"'{params.keyword}' 키워드 타겟팅 세분화" if kw else "키워드 타겟팅 세분화",
+            "keyword가 비어 있어 조회할 수 없습니다. 검색 키워드를 알려주세요.",
+        )
+        if err:
+            return err
 
         date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
         gender_result = _run(tools, "get_shopping_keyword_gender_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
         age_result = _run(tools, "get_shopping_keyword_age_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
 
-        gender_top = None
-        for points in _parse_series(gender_result).values():
-            candidate = _top_segment(points)
-            if candidate and (gender_top is None or candidate[1] > gender_top[1]):
-                gender_top = candidate
-
-        age_top = None
-        for points in _parse_series(age_result).values():
-            candidate = _top_segment(points)
-            if candidate and (age_top is None or candidate[1] > age_top[1]):
-                age_top = candidate
+        gender_top = _top_segment_from_series(gender_result)
+        age_top = _top_segment_from_series(age_result)
 
         note_block = f"{code_note}\n\n" if code_note else ""
         report = _build_keyword_segmentation_report(

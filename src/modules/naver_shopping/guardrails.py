@@ -4,11 +4,11 @@
 # ➔ 다음 단계: 🟡 [Step 3] tools.py 로 이동하여 쇼핑 도구를 정의하세요.
 # ==============================================================================
 
-import html
 import re
 from typing import Any, Dict
 
 from src.core.base import BaseGuardrail, GuardrailResult
+from src.core.guardrails import sanitize_text
 
 
 class NaverShoppingGuardrail(BaseGuardrail):
@@ -82,11 +82,4 @@ class NaverShoppingGuardrail(BaseGuardrail):
         return GuardrailResult(passed=True)
 
     def sanitize_output(self, tool_name: str, output: Any) -> Any:
-        if isinstance(output, str):
-            clean = re.sub(r"<.*?>", "", output)
-            clean = html.unescape(clean)
-            # Mask email addresses / Korean phone numbers (handoff/03_guidelines.md 2절 사후 출력 정제 요건)
-            clean = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[EMAIL_MASKED]", clean)
-            clean = re.sub(r"01[016789]-?\d{3,4}-?\d{4}", "[PHONE_MASKED]", clean)
-            return clean
-        return output
+        return sanitize_text(output) if isinstance(output, str) else output
