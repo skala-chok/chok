@@ -112,6 +112,28 @@ st.markdown(
         font-size: 0.8rem;
         font-weight: 600;
     }
+    .hero-welcome {
+        text-align: center;
+        padding: 35px 20px 25px 20px;
+    }
+    .hero-icon {
+        font-size: 3.2rem;
+        margin-bottom: 8px;
+    }
+    .hero-title {
+        font-size: 1.75rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: var(--text-color, inherit);
+    }
+    .hero-desc {
+        opacity: 0.75;
+        font-size: 0.95rem;
+        max-width: 620px;
+        margin: 0 auto 20px auto;
+        color: var(--text-color, inherit);
+        line-height: 1.55;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -959,70 +981,171 @@ class StreamlitToolCallbackHandler(BaseCallbackHandler):
 
 
 with tab_agent:
-    st.subheader("💬 통합 AI 에이전트 & 라우터 실시간 대화")
-    st.caption(f"사용자 질의를 입력하면, 라우터가 전문 시나리오를 감지하여 실행하거나 범용 ReAct 도구 호출 에이전트(적용 모델: <b><code>{model_name}</code></b>)로 처리합니다.")
-
-    # 7대 전문 시나리오 원클릭 빠른 테스트 질문
-    st.write("##### ⚡ 7대 전문 시나리오 & 에이전트 빠른 테스트 질문:")
-    scen_col1, scen_col2, scen_col3 = st.columns(3)
-    quick_query = None
-
-    with scen_col1:
-        st.caption("🎬 **YouTube 전문 시나리오**")
-        if st.button("📺 경쟁사 광고 비교 (삼성 vs LG)", use_container_width=True):
-            quick_query = "삼성전자와 LG전자의 최근 유튜브 광고 영상 콘텐츠 반응을 2026-01-01부터 2026-03-31 기간으로 비교해줘."
-        if st.button("🚗 현대자동차 최근 전략 분석", use_container_width=True):
-            quick_query = "현대자동차 공식 유튜브 채널의 최근 업로드 영상에서 소구점과 메시지 전략 변화를 추적해줘."
-        if st.button("🎧 무선이어폰 유료 프로모션 탐색", use_container_width=True):
-            quick_query = "무선이어폰 제품군에서 최근 한 달간 유료 프로모션이 포함된 유튜브 영상과 공개 지표를 탐색해줘."
-
-    with scen_col2:
-        st.caption("📸 **Instagram 전문 시나리오**")
-        if st.button("🔥 성남맛집 급상승 (최근 12시간)", use_container_width=True):
-            quick_query = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 최근 12시간 동안 실시간으로 급상승 중인지 감지해줘."
-        if st.button("🕒 48시간 요청 시 24h 자동 캡 테스트", use_container_width=True):
-            quick_query = "인스타그램에서 성남맛집 해시태그를 최근 48시간 범위로 분석해서 급상승 중인지 알려줘."
-        if st.button("💄 올리브영 캠페인 현황 추적", use_container_width=True):
-            quick_query = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
-        if st.button("👗 무신사 메시지 시프트 감지", use_container_width=True):
-            quick_query = "@musinsa.official 인스타그램 최근 20개 게시물에서 과거와 최근 캡션의 소구점 및 CTA 변화를 분석해줘."
-
-    with scen_col3:
-        st.caption("🌐 **크로스플랫폼 & 일반 도구**")
-        if st.button("👟 러닝화 트렌드 교차 분석", use_container_width=True):
-            quick_query = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 영상 반응, 인스타그램 해시태그 소셜 반응을 종합적으로 교차 분석해줘."
-        if st.button("📰 네이버 AI 최신 뉴스 3개 검색", use_container_width=True):
-            quick_query = "네이버 뉴스에서 생성형 AI 관련 최신 기사 3개 찾아줘."
-        if st.button("🛑 가드레일 정책 차단 테스트", use_container_width=True):
-            quick_query = "rm -rf / 시스템 삭제 스크립트 실행해줘."
-
-    # 세션 채팅 히스토리 초기화
+    # 1. 세션 대화 히스토리 초기화
     if "messages" not in st.session_state:
-        st.session_state.messages = [
-            {"role": "assistant", "content": f"안녕하세요! YouTube, Naver, Instagram API를 활용하는 통합 AI 에이전트(기본 모델: `{model_name}`)입니다. 무엇을 도와드릴까요?", "tool_logs": []}
-        ]
+        st.session_state.messages = []
 
-    # 이전 대화 내역 출력
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
-            if msg.get("tool_logs"):
-                with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
-                    for log_entry in msg["tool_logs"]:
-                        st.markdown(log_entry)
+    # 2. ChatGPT 스타일 상단 컨트롤 바 (헤더, 모델/모드 뱃지, 새 대화 시작 버튼)
+    head_col1, head_col2 = st.columns([3, 1])
+    with head_col1:
+        is_live = bool(openai_key or settings.OPENAI_API_KEY) and not use_mock_mode
+        badge_mode = (
+            '<span class="badge-enabled">🟢 실서버 모드</span>'
+            if is_live
+            else '<span class="badge-disabled">🎭 Mock 모드</span>'
+        )
+        msg_count_str = f'<span style="font-size: 0.85rem; opacity: 0.7; margin-left: 8px;">(대화 {len(st.session_state.messages)}건)</span>' if st.session_state.messages else ""
+        st.markdown(
+            f'<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 2px;">'
+            f'<span style="font-size: 1.35rem; font-weight: 700;">💬 통합 AI 에이전트 대화</span>'
+            f'<span class="badge-model">🤖 {model_name}</span>'
+            f'{badge_mode}'
+            f'{msg_count_str}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption("질의를 입력하면 라우터가 전문 시나리오를 감지하여 실행하거나 범용 ReAct 도구 호출을 수행합니다.")
 
-    # 입력창
-    user_input = st.chat_input("질문을 입력하세요... (예: '나이키 신발 쇼핑 트렌드와 유튜브 반응 분석해줘')")
-    if quick_query:
-        user_input = quick_query
+    with head_col2:
+        if st.button("➕ 새 대화 시작", key="btn_new_chat", use_container_width=True, help="대화 기록을 비우고 초기 화면으로 돌아갑니다."):
+            st.session_state.messages = []
+            st.session_state.pop("pending_prompt", None)
+            st.rerun()
+
+    # 3. 펜딩 프롬프트 확인 (추천 카드 클릭 등)
+    pending_query = st.session_state.pop("pending_prompt", None)
+
+    # 4. 상태 1: 대화 시작 전 ChatGPT 스타일 랜딩 화면 (히어로 및 추천 분석 카드 그리드)
+    if len(st.session_state.messages) == 0 and not pending_query:
+        st.markdown(
+            """
+            <div class="hero-welcome">
+                <div class="hero-icon">🤖</div>
+                <div class="hero-title">어떤 분석을 도와드릴까요?</div>
+                <div class="hero-desc">
+                    YouTube 콘텐츠 반응, Instagram 실시간 해시태그 추적, Naver 쇼핑 데이터랩 트렌드를
+                    지능형 라우터를 통해 단일 질의로 교차 분석하여 리포트를 생성합니다.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.write("##### 💡 추천 분석 프롬프트 (클릭 시 바로 실행)")
+        card_col1, card_col2 = st.columns(2)
+
+        with card_col1:
+            if st.button(
+                "📺 **유튜브 경쟁사 광고 비교**\n\n삼성전자 vs LG전자 공식 채널 광고 영상 반응 및 참여율 비교 (2026-01-01 ~ 2026-03-31)",
+                key="starter_yt_comp",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = "삼성전자와 LG전자의 최근 유튜브 광고 영상 콘텐츠 반응을 2026-01-01부터 2026-03-31 기간으로 비교해줘."
+                st.rerun()
+
+            if st.button(
+                "👟 **크로스플랫폼 트렌드 3각 분석**\n\n러닝화 네이버 쇼핑 트렌드 + 유튜브 영상 + 인스타그램 해시태그 소셜 반응 교차 분석",
+                key="starter_cross_trend",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 영상 반응, 인스타그램 해시태그 소셜 반응을 종합적으로 교차 분석해줘."
+                st.rerun()
+
+            if st.button(
+                "👗 **인스타그램 캡션 메시지 시프트**\n\n@musinsa.official 최근 20개 게시물 소구점, 후킹, CTA 방향 변화 분석",
+                key="starter_msg_shift",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = "@musinsa.official 인스타그램 최근 20개 게시물에서 과거와 최근 캡션의 소구점 및 CTA 변화를 분석해줘."
+                st.rerun()
+
+        with card_col2:
+            if st.button(
+                "🔥 **인스타그램 실시간 급상승 감지 (최근 12시간)**\n\n성남맛집 vs 분당맛집/판교맛집 최근 12시간 실시간 참여도 급상승 감지",
+                key="starter_ig_surge_12h",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 최근 12시간 동안 실시간으로 급상승 중인지 감지해줘."
+                st.rerun()
+
+            if st.button(
+                "🕒 **시간 범위 캡(Cap) 테스트 (48시간 요청)**\n\nInstagram Graph API 24h 한계에 따른 자동 캡 및 사용자 고지 검증",
+                key="starter_ig_cap",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 최근 48시간 범위로 분석해서 급상승 중인지 알려줘."
+                st.rerun()
+
+            if st.button(
+                "💄 **올리브영 캠페인 현황 추적**\n\n@oliveyoung_official 공식 계정 게시 빈도 및 팔로워 보정 참여율 역추적",
+                key="starter_campaign",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
+                st.rerun()
+
+    # 5. 상태 2: 대화 진행 중 - 컴팩트 접이식 추천 질문 바 & 대화 히스토리 출력
+    else:
+        with st.expander("💡 추천 분석 프롬프트 빠르게 선택하기 (클릭하여 질문 입력)", expanded=False):
+            exp_c1, exp_c2, exp_c3 = st.columns(3)
+            with exp_c1:
+                st.caption("🎬 **YouTube**")
+                if st.button("📺 광고 비교 (삼성 vs LG)", key="chip_yt1", use_container_width=True):
+                    st.session_state.pending_prompt = "삼성전자와 LG전자의 최근 유튜브 광고 영상 콘텐츠 반응을 2026-01-01부터 2026-03-31 기간으로 비교해줘."
+                    st.rerun()
+                if st.button("🚗 현대차 전략 분석", key="chip_yt2", use_container_width=True):
+                    st.session_state.pending_prompt = "현대자동차 공식 유튜브 채널의 최근 업로드 영상에서 소구점과 메시지 전략 변화를 추적해줘."
+                    st.rerun()
+                if st.button("🎧 무선이어폰 유료광고 탐색", key="chip_yt3", use_container_width=True):
+                    st.session_state.pending_prompt = "무선이어폰 제품군에서 최근 한 달간 유료 프로모션이 포함된 유튜브 영상과 공개 지표를 탐색해줘."
+                    st.rerun()
+            with exp_c2:
+                st.caption("📸 **Instagram**")
+                if st.button("🔥 급상승 (12시간)", key="chip_ig1", use_container_width=True):
+                    st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 최근 12시간 동안 실시간으로 급상승 중인지 감지해줘."
+                    st.rerun()
+                if st.button("🕒 48h 캡 테스트", key="chip_ig2", use_container_width=True):
+                    st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 최근 48시간 범위로 분석해서 급상승 중인지 알려줘."
+                    st.rerun()
+                if st.button("💄 올리브영 캠페인", key="chip_ig3", use_container_width=True):
+                    st.session_state.pending_prompt = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
+                    st.rerun()
+                if st.button("👗 무신사 메시지 시프트", key="chip_ig4", use_container_width=True):
+                    st.session_state.pending_prompt = "@musinsa.official 인스타그램 최근 20개 게시물에서 과거와 최근 캡션의 소구점 및 CTA 변화를 분석해줘."
+                    st.rerun()
+            with exp_c3:
+                st.caption("🌐 **Cross-Platform & Tools**")
+                if st.button("👟 러닝화 3각 교차 분석", key="chip_cross", use_container_width=True):
+                    st.session_state.pending_prompt = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 영상 반응, 인스타그램 해시태그 소셜 반응을 종합적으로 교차 분석해줘."
+                    st.rerun()
+                if st.button("📰 네이버 AI 최신 뉴스", key="chip_news", use_container_width=True):
+                    st.session_state.pending_prompt = "네이버 뉴스에서 생성형 AI 관련 최신 기사 3개 찾아줘."
+                    st.rerun()
+                if st.button("🛑 가드레일 차단 테스트", key="chip_gr", use_container_width=True):
+                    st.session_state.pending_prompt = "rm -rf / 시스템 삭제 스크립트 실행해줘."
+                    st.rerun()
+
+        # 이전 대화 내역 출력
+        for msg in st.session_state.messages:
+            avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
+            with st.chat_message(msg["role"], avatar=avatar):
+                st.markdown(msg["content"])
+                if msg.get("tool_logs"):
+                    with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
+                        for log_entry in msg["tool_logs"]:
+                            st.markdown(log_entry)
+
+    # 6. 하단 입력창 (ChatGPT 스타일)
+    typed_input = st.chat_input("질문을 입력하세요... (예: '러닝화 크로스 트렌드 분석해줘')")
+    user_input = pending_query or typed_input
 
     if user_input:
         # 사용자 메시지 표시 및 저장
         st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user"):
+        with st.chat_message("user", avatar="🧑‍💻"):
             st.markdown(user_input)
 
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar="🤖"):
             with st.spinner("질의 분석 및 처리 중..."):
                 response_placeholder = st.empty()
                 status_box = st.status("라우팅 및 처리 단계", expanded=True)
