@@ -45,9 +45,21 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+        z-index: 10 !important;
+    }
     .block-container {
-        padding-top: 1.2rem !important;
+        padding-top: 3.5rem !important;
         padding-bottom: 1rem !important;
+    }
+    div[data-testid="stTabs"] {
+        position: relative;
+        z-index: 20;
+    }
+    button[data-baseweb="tab"] {
+        font-size: 1.02rem !important;
+        font-weight: 600 !important;
     }
     .main-header {
         font-size: 2.2rem;
@@ -670,7 +682,7 @@ with tab_agent:
     pending_query = st.session_state.pop("pending_prompt", None)
 
     # 4. 스크롤 뷰 컨테이너 (고정 높이로 전체 브라우저 화면 스크롤을 방지하고 내부에서 매끄럽게 스크롤)
-    chat_container = st.container(height=520, autoscroll=True)
+    chat_container = st.container(height=500, autoscroll=True)
 
     # 5. 하단 고정 질문 입력창 (ChatGPT 스타일)
     typed_input = st.chat_input("질문을 입력하세요... (예: '러닝화 크로스 트렌드 분석해줘')")
