@@ -7,10 +7,17 @@ on:
   pull_request_review:
     types: [submitted, edited, dismissed]
 
+permissions:
+  pull-requests: read
+  contents: read
+
 jobs:
   verify-merge-policy:
     name: Verify Base 'main' Merge Policy
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+      contents: read
     if: github.event.pull_request.base.ref == 'main' || (github.event.review && github.event.pull_request.base.ref == 'main')
     steps:
       - name: 1. Check Source Branch (Must be 'dev')
