@@ -1,6 +1,6 @@
 """도구 실행 파이프라인 가드레일 래퍼 및 데이터 정제 엔진 (Guardrails Execution Engine).
 
-[🛡️ 설계 패턴 & 교수님 채점 안내]
+[🛡️ 설계 패턴 & 코드 참고사항]
 - 데코레이터 / 프록시 패턴 (Decorator / Proxy Pattern):
   도구(BaseTool) 내부의 핵심 비즈니스 로직을 전혀 수정하지 않고, 도구 실행 전후에
   인자 유효성 검사(pre-validation)와 출력물 정제(post-sanitization)를 일관되게 주입합니다.

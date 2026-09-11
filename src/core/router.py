@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: 지능형 시나리오 라우터 (Semantic Scenario Router)]
+# 🎯 [코드 참고사항: 지능형 시나리오 라우터 (Semantic Scenario Router)]
 # 1. 이원화 아키텍처 (Hybrid Routing Architecture):
 #    - 복합 비즈니스 질의: 전문 파이프라인(Scenario, Fast-Path)으로 직행시켜 환각과 토큰 낭비 방지
 #    - 비정형 일반 질의: ReAct 자율 도구 호출 루프(General Agent, Fallback)로 유연하게 처리

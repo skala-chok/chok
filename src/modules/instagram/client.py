@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: Instagram Graph API 클라이언트]
+# 🎯 [코드 참고사항: Instagram Graph API 클라이언트]
 # 1. 하네스 룰 1-1 준수 (Rule 1-1 Fallback Mock Data Contract):
 #    - Meta Graph API 장애, 토큰 만료, 쿼터 초과 시 프로세스 종료 없이 표준 목 데이터 반환
 #    - '_fallback': True 및 '_fallback_notice' 메타데이터를 포함해 호출자가 오프라인 폴백 상태를 명확히 인지

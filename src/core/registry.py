@@ -1,6 +1,6 @@
 """동적 모듈 탐색 및 플러그인 레지스트리 (Dynamic Module Registry).
 
-[🏛️ 아키텍처 설계 & 교수님 채점 안내]
+[🏛️ 아키텍처 설계 & 코드 참고사항]
 - 런타임 리플렉션(Reflection) 기반 자동 탐색:
   `pkgutil.iter_modules`와 `importlib`을 활용하여 `src/modules/` 하위의 모든 패키지를 스캔하고,
   `BaseAgentModule`을 구현한 클래스를 찾아 자동으로 인스턴스화 및 등록합니다.

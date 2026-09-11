@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: 멀티 워커 에이전트 오케스트레이터 (AgentRunner)]
+# 🎯 [코드 참고사항: 멀티 워커 에이전트 오케스트레이터 (AgentRunner)]
 # 1. 플러그인 아키텍처 (Plugin Architecture):
 #    - ModuleRegistry에 등록된 활성화 모듈(YouTube, Naver, Instagram 등)의 도구와 가드레일을 동적 합성
 # 2. 투명한 데코레이터/프록시 패턴 (Decorator/Proxy Pattern):

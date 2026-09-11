@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: 네이버 검색 OpenAPI 클라이언트]
+# 🎯 [코드 참고사항: 네이버 검색 OpenAPI 클라이언트]
 # 1. 하네스 룰 1-1 준수 (Rule 1-1 Fallback Mock Data Contract):
 #    - 외부 API 통신 실패 시 프로세스를 크래시하지 않고 items -> title, link, description 규격의 표준 목 데이터 반환
 # 2. 장애 격리 및 안전성:

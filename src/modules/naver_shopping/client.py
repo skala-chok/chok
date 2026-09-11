@@ -29,7 +29,7 @@ def _load_categories() -> List[Dict[str, Any]]:
 def search_naver_category(keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
     """키워드를 세분류(가장 구체적인 분류, Leaf)부터 대분류 순으로 매칭해 후보를 반환합니다.
     
-    [교수님 채점 포인트: 리프 우선(Leaf-first) 매칭 알고리즘]
+    [코드 참고사항: 리프 우선(Leaf-first) 매칭 알고리즘]
     - 네이버 쇼핑은 [대분류 > 중분류 > 소분류 > 세분류]의 4단계 계층 구조를 갖습니다.
     - 사용자가 검색한 키워드가 가장 말단 세분류(Leaf node)와 정확히 일치할 경우(exact_leaf)
       상위 대분류 부분 일치(partial)보다 우선순위를 높여 최적의 카테고리 코드를 추천합니다.
@@ -56,7 +56,7 @@ class NaverCategoryLookup:
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: 네이버 클라우드 쇼핑/데이터랩 API 클라이언트]
+# 🎯 [코드 참고사항: 네이버 클라우드 쇼핑/데이터랩 API 클라이언트]
 # 1. 하네스 룰 1-1 준수 (Rule 1-1 Fallback Mock Data Contract):
 #    - 외부 API 통신 장애(네트워크 단절, 5xx 서버 에러, Quota 소진 등) 발생 시 절대 Crash하지 않음
 #    - 정상 OpenAPI 응답과 동일한 딕셔너리 구조(results -> data -> period, ratio)의 폴백 데이터 반환
