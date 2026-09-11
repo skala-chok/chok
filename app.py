@@ -667,6 +667,43 @@ with tab_scenario:
 # ==============================================================================
 # 💬 탭 3: 통합 에이전트 & 라우터 대화 (Agent & Router)
 # ==============================================================================
+from langchain_core.callbacks import BaseCallbackHandler
+
+
+class StreamlitToolCallbackHandler(BaseCallbackHandler):
+    """LangChain ReAct 에이전트의 도구 호출 및 액션을 Streamlit status_box에 실시간 로깅하는 핸들러."""
+
+    def __init__(self, status_container, log_store: List[str]):
+        super().__init__()
+        self.status = status_container
+        self.log_store = log_store
+
+    def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
+        tool_name = serialized.get("name", "tool")
+        msg = f"🔧 **[도구 실행]** `{tool_name}`\n- 파라미터: `{input_str}`"
+        self.status.write(msg)
+        self.log_store.append(msg)
+
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        out_str = str(output)
+        preview = out_str[:160] + "..." if len(out_str) > 160 else out_str
+        msg = f"✅ **[도구 완료]**\n> {preview}"
+        self.status.write(msg)
+        self.log_store.append(msg)
+
+    def on_tool_error(self, error: BaseException, **kwargs: Any) -> None:
+        msg = f"❌ **[도구 오류]**: `{error}`"
+        self.status.write(msg)
+        self.log_store.append(msg)
+
+    def on_agent_action(self, action: Any, **kwargs: Any) -> None:
+        tool_name = getattr(action, "tool", "")
+        if tool_name:
+            msg = f"🤔 **[에이전트 판단]** 도구 `{tool_name}` 호출을 결정했습니다."
+            self.status.write(msg)
+            self.log_store.append(msg)
+
+
 with tab_agent:
     st.subheader("💬 통합 AI 에이전트 & 라우터 실시간 대화")
     st.caption(f"사용자 질의를 입력하면, 라우터가 전문 시나리오를 감지하여 실행하거나 범용 ReAct 도구 호출 에이전트(적용 모델: <b><code>{model_name}</code></b>)로 처리합니다.")
@@ -694,13 +731,17 @@ with tab_agent:
     # 세션 채팅 히스토리 초기화
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": f"안녕하세요! YouTube, Naver, Instagram API를 활용하는 통합 AI 에이전트(기본 모델: `{model_name}`)입니다. 무엇을 도와드릴까요?"}
+            {"role": "assistant", "content": f"안녕하세요! YouTube, Naver, Instagram API를 활용하는 통합 AI 에이전트(기본 모델: `{model_name}`)입니다. 무엇을 도와드릴까요?", "tool_logs": []}
         ]
 
     # 이전 대화 내역 출력
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("tool_logs"):
+                with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
+                    for log_entry in msg["tool_logs"]:
+                        st.markdown(log_entry)
 
     # 입력창
     user_input = st.chat_input("질문을 입력하세요... (예: '나이키 신발 쇼핑 트렌드와 유튜브 반응 분석해줘')")
@@ -717,6 +758,11 @@ with tab_agent:
             with st.spinner("질의 분석 및 처리 중..."):
                 response_placeholder = st.empty()
                 status_box = st.status("라우팅 및 처리 단계", expanded=True)
+                current_tool_logs = []
+
+                def log_status(text: str):
+                    status_box.write(text)
+                    current_tool_logs.append(text)
 
                 # 1. 입력 가드레일 검사
                 all_guardrails = []
@@ -731,21 +777,31 @@ with tab_agent:
                         status_box.update(label="🛑 가드레일 정책 위반 차단", state="error")
                         final_ans = f"[안내] 입력이 시스템 안전 가드레일 정책에 의해 차단되었습니다:\n- **사유**: {val_res.error_message}"
                         response_placeholder.markdown(final_ans)
-                        st.session_state.messages.append({"role": "assistant", "content": final_ans})
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": final_ans,
+                            "tool_logs": current_tool_logs,
+                        })
                         break
 
                 if not is_blocked:
                     if use_mock_mode:
-                        status_box.write(f"🎭 Mock 모드 동작 중 (가상 모델: `{model_name}`): 가상 라우터 및 도구 호출 에뮬레이션")
-                        time.sleep(0.5)
+                        log_status(f"🎭 **Mock 모드 동작 중** (가상 모델: `{model_name}`): 가상 라우터 및 도구 호출 에뮬레이션")
+                        time.sleep(0.3)
 
                         # 단순 키워드 매칭으로 라우팅 시뮬레이션
                         if any(w in user_input for w in ["인스타", "해시태그", "성남 맛집", "분당 맛집", "판교 맛집"]):
-                            status_box.write("🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 시나리오 자동 매칭 (Confidence: 0.98)")
-                            status_box.write("⚙️ Step 1: 해시태그 정규화 완료 (#성남 맛집 -> q=성남맛집)")
-                            status_box.write("⚙️ Step 2: 최근 24시간 실시간 유입량(recent_media) 수집 완료")
-                            status_box.write("⚙️ Step 3: 누적 인기 기준선(top_media) 대조 및 급상승 판정 완료")
-                            status_box.update(label="✅ 급상승 해시태그 시나리오 완료", state="complete")
+                            log_status("🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 자동 매칭 (신뢰도: 0.98)")
+                            log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '성남맛집'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - ID: `ht_성남맛집`")
+                            log_status("🔧 **[도구 실행]** `get_hashtag_recent_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_hashtag_recent_media` (0.12초) - 최근 24h 게시물 6건 수집 완료")
+                            log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.10초) - 누적 인기 기준선 대조 완료")
+                            status_box.update(label=f"✅ 급상승 해시태그 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
 
                             final_ans = (
                                 "### 📊 [성남 맛집] 인스타그램 실시간 해시태그 분석 리포트 (Mock)\n\n"
@@ -754,11 +810,15 @@ with tab_agent:
                                 "※ 고지: Instagram Graph API는 최근 24시간 게시물만 제공하며 기간별 시계열 추이를 제공하지 않습니다."
                             )
                         elif any(w in user_input for w in ["트렌드", "크로스", "쇼핑", "유튜브", "반응", "분석"]):
-                            status_box.write("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 시나리오 자동 매칭 (Confidence: 0.95)")
-                            status_box.write("⚙️ Step 1: 네이버 쇼핑 트렌드 데이터 수집 완료")
-                            status_box.write("⚙️ Step 2: 유튜브 관련 영상 및 반응 수집 완료")
-                            status_box.write("⚙️ Step 3: 종합 크로스 분석 인사이트 생성 완료")
-                            status_box.update(label="✅ 시나리오 파이프라인 실행 완료", state="complete")
+                            log_status("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 자동 매칭 (신뢰도: 0.95)")
+                            log_status("🔧 **[도구 실행]** `get_shopping_trends` (파라미터: `{'keywords': '러닝화', 'start_date': '2026-01-01', 'end_date': '2026-03-01'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_shopping_trends` (0.08초) - 네이버 쇼핑 데이터랩 수집 완료")
+                            log_status("🔧 **[도구 실행]** `search_youtube_videos` (파라미터: `{'query': '러닝화 추천 트렌드', 'max_results': 5}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `search_youtube_videos` (0.15초) - 관련 동영상 5건 수집 완료")
+                            log_status("⚙️ **[종합 분석 리포트 생성]** 크로스 플랫폼 트렌드 및 시사점 도출")
+                            status_box.update(label=f"✅ 크로스 플랫폼 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
 
                             kw = "러닝화" if "러닝화" in user_input else "트렌드 상품"
                             final_ans = (
@@ -772,12 +832,16 @@ with tab_agent:
                                 f"- 봄 시즌 진입과 함께 야외 활동 관련 검색량이 급증하고 있으므로, 관련 기획전 및 콘텐츠 마케팅 집중 투자가 권장됩니다."
                             )
                         else:
-                            status_box.write(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
-                            status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete")
+                            log_status(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
+                            status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete", expanded=False)
                             final_ans = f"'{user_input}'에 대한 일반 에이전트 응답입니다. (Mock 모드: 실제 질의 처리는 사이드바에 API 키를 입력해 주세요.)"
 
                         response_placeholder.markdown(final_ans)
-                        st.session_state.messages.append({"role": "assistant", "content": final_ans})
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": final_ans,
+                            "tool_logs": current_tool_logs,
+                        })
 
                     else:
                         # 실제 AgentRunner 가동
@@ -792,16 +856,32 @@ with tab_agent:
                                 scenario_registry=scen_registry,
                                 llm=custom_llm,
                             )
-                            status_box.write(f"🧠 AgentRunner 가동 (모델: `{model_name}`) 및 라우팅 판정 중...")
-                            final_ans = runner.run(user_input)
-                            status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}`)", state="complete")
+                            log_status(f"🧠 **[에이전트 준비]** AgentRunner 초기화 완료 (모델: `{model_name}`)")
+
+                            # LangChain 도구 호출 콜백 핸들러 등록
+                            cb_handler = StreamlitToolCallbackHandler(status_box, current_tool_logs)
+
+                            final_ans = runner.run(
+                                user_input,
+                                callbacks=[cb_handler],
+                                on_status=log_status,
+                            )
+                            status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
                             response_placeholder.markdown(final_ans)
-                            st.session_state.messages.append({"role": "assistant", "content": final_ans})
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": final_ans,
+                                "tool_logs": current_tool_logs,
+                            })
                         except Exception as e_run:
                             status_box.update(label="❌ 실행 오류", state="error")
                             err_msg = f"에이전트 실행 중 오류가 발생했습니다: {e_run}"
                             response_placeholder.error(err_msg)
-                            st.session_state.messages.append({"role": "assistant", "content": err_msg})
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": err_msg,
+                                "tool_logs": current_tool_logs,
+                            })
 
 
 # ==============================================================================
