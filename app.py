@@ -178,7 +178,7 @@ with st.sidebar:
         "OpenAI API Key",
         value=settings.OPENAI_API_KEY or "",
         type="password",
-        help="gpt-4o, gpt-5-luna 등 LLM 추론 및 라우터에 사용",
+        help="gpt-4o, gpt-5.6-luna 등 LLM 추론 및 라우터에 사용",
     )
     naver_id = st.text_input(
         "Naver Client ID",

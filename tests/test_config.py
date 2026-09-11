@@ -9,7 +9,7 @@ def test_settings_default_values():
         NAVER_CLIENT_SECRET="test-naver-secret"
     )
     assert test_settings.OPENAI_API_KEY == "test-openai-key"
-    assert test_settings.MODEL_NAME == "gpt-5-luna"
+    assert test_settings.MODEL_NAME == "gpt-5.6-luna"
     assert test_settings.TEMPERATURE == 0.0
     assert test_settings.YOUTUBE_API_KEY == "test-yt-key"
     assert test_settings.NAVER_CLIENT_ID == "test-naver-id"
@@ -17,4 +17,4 @@ def test_settings_default_values():
 
 def test_settings_singleton():
     assert isinstance(settings, Settings)
-    assert settings.MODEL_NAME == "gpt-5-luna"
+    assert settings.MODEL_NAME == "gpt-5.6-luna"

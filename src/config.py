@@ -10,7 +10,7 @@ class Settings(BaseSettings):
 
     # Core LLM
     OPENAI_API_KEY: Optional[str] = None
-    MODEL_NAME: str = "gpt-5-luna"
+    MODEL_NAME: str = "gpt-5.6-luna"
     TEMPERATURE: float = 0.0
 
     # YouTube API (Worker 1, 2)
