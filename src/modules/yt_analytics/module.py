@@ -8,7 +8,7 @@ from typing import List
 from langchain_core.tools import BaseTool
 from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
 from src.config import settings
-from .tools import get_channel_stats, get_video_comments
+from .tools import get_channel_stats, get_video_comments, get_video_metrics
 from .guardrails import YouTubeAnalyticsGuardrail
 from .context import YouTubeAnalyticsContextProvider
 
@@ -27,7 +27,7 @@ class YouTubeAnalyticsModule(BaseAgentModule):
 
     def get_tools(self) -> List[BaseTool]:
         # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
-        return [get_channel_stats, get_video_comments]
+        return [get_channel_stats, get_video_comments, get_video_metrics]
 
     def get_guardrails(self) -> List[BaseGuardrail]:
         return [YouTubeAnalyticsGuardrail()]

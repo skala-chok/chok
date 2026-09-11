@@ -8,7 +8,10 @@ from typing import List
 from langchain_core.tools import BaseTool
 from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
 from src.config import settings
-from .tools import search_youtube_videos, get_video_transcript
+from .tools import (
+    find_youtube_channel, get_channel_videos, get_competitor_recent_uploads,
+    get_video_transcript, search_paid_promotion_videos, search_youtube_videos,
+)
 from .guardrails import YouTubeSearchGuardrail
 from .context import YouTubeSearchContextProvider
 
@@ -27,7 +30,10 @@ class YouTubeSearchModule(BaseAgentModule):
 
     def get_tools(self) -> List[BaseTool]:
         # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
-        return [search_youtube_videos, get_video_transcript]
+        return [
+            search_youtube_videos, get_video_transcript, find_youtube_channel,
+            get_channel_videos, get_competitor_recent_uploads, search_paid_promotion_videos,
+        ]
 
     def get_guardrails(self) -> List[BaseGuardrail]:
         return [YouTubeSearchGuardrail()]
