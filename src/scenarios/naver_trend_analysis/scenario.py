@@ -48,6 +48,14 @@ def _resolve_category_code(tools: Dict[str, BaseTool], search_term: str, given_c
     return corrected, note
 
 
+def _pick_search_term(*candidates: str) -> str:
+    """category_name 등 1순위 후보가 비어 있으면 다음 후보(키워드 등)로 넘어간다."""
+    for c in candidates:
+        if c and c.strip():
+            return c.strip()
+    return ""
+
+
 def _parse_series(text: str) -> Dict[str, List[Tuple[str, Optional[str], float]]]:
     """get_shopping_*_trend 계열 Tool이 반환하는 텍스트를 {title: [(period, group, ratio), ...]}로 역파싱한다."""
     series: Dict[str, List[Tuple[str, Optional[str], float]]] = {}
@@ -101,7 +109,9 @@ def _default_end() -> str:
 
 
 class NewProductKeywordTrendParams(BaseModel):
-    category_name: str = Field(description="네이버쇼핑 분야명 (예: '스킨/토너')")
+    category_name: str = Field(
+        default="", description="네이버쇼핑 분야명 (예: '스킨/토너'). 모르면 비워둬도 됩니다 (keywords로 대신 조회)."
+    )
     category_code: str = Field(
         default="",
         description=(
@@ -144,21 +154,40 @@ class NewProductKeywordTrendScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        category_code, code_note = _resolve_category_code(tools, params.category_name, params.category_code)
+        kw_list = [k.strip() for k in params.keywords.split(",") if k.strip()]
+        search_term = _pick_search_term(params.category_name, *kw_list)
+        display_name = params.category_name or search_term or "(분야 미지정)"
 
-        category_arg = f"{params.category_name}:{category_code}"
+        if not search_term:
+            return (
+                "### 신제품 키워드 트렌드 조사\n"
+                "❌ category_name과 keywords가 모두 비어 있어 카테고리를 조회할 수 없습니다. "
+                "분야명이나 상품 키워드를 알려주세요."
+            )
+
+        category_code, code_note = _resolve_category_code(tools, search_term, params.category_code)
+        if not category_code:
+            note_block = f"{code_note}\n\n" if code_note else ""
+            return (
+                f"### [{display_name}] 신제품 키워드 트렌드 조사\n"
+                f"{note_block}"
+                "❌ category_code를 확정하지 못해 분야/키워드별 조회를 진행할 수 없습니다. "
+                "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
+            )
+
+        category_arg = f"{display_name}:{category_code}"
         category_result = _run(
             tools, "get_shopping_category_trend",
             categories=category_arg, start_date=params.start_date, end_date=params.end_date,
         )
 
+        overall_keywords = params.keywords if kw_list else search_term
         overall_result = _run(
             tools, "get_shopping_trends",
-            keywords=params.keywords, start_date=params.start_date, end_date=params.end_date,
+            keywords=overall_keywords, start_date=params.start_date, end_date=params.end_date,
         )
 
-        kw_list = [k.strip() for k in params.keywords.split(",") if k.strip()]
-        kw_pairs = ",".join(f"{kw}:{kw}" for kw in kw_list)
+        kw_pairs = ",".join(f"{kw}:{kw}" for kw in kw_list) if kw_list else f"{search_term}:{search_term}"
         keyword_result = _run(
             tools, "get_shopping_keyword_trend",
             category_code=category_code, keywords=kw_pairs,
@@ -171,7 +200,7 @@ class NewProductKeywordTrendScenario(BaseScenario):
 
         note_block = f"{code_note}\n\n" if code_note else ""
         return (
-            f"### [{params.category_name}] 신제품 키워드 트렌드 조사\n"
+            f"### [{display_name}] 신제품 키워드 트렌드 조사\n"
             f"{note_block}"
             f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
             f"#### 1. 분야 전체 트렌드 (쇼핑 영역)\n{category_result}\n\n"
@@ -184,7 +213,9 @@ class NewProductKeywordTrendScenario(BaseScenario):
 
 
 class TargetAudienceValidationParams(BaseModel):
-    category_name: str = Field(description="네이버쇼핑 분야명 (예: '스킨/토너')")
+    category_name: str = Field(
+        default="", description="네이버쇼핑 분야명 (예: '스킨/토너'). 모르면 비워둬도 됩니다 (keyword로 대신 조회)."
+    )
     category_code: str = Field(
         default="",
         description=(
@@ -230,7 +261,26 @@ class TargetAudienceValidationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        category_code, code_note = _resolve_category_code(tools, params.category_name, params.category_code)
+        search_term = _pick_search_term(params.category_name, params.keyword)
+        display_name = params.category_name or search_term or "(분야 미지정)"
+
+        if not search_term:
+            return (
+                "### 타겟 오디언스 검증\n"
+                "❌ category_name과 keyword가 모두 비어 있어 카테고리를 조회할 수 없습니다. "
+                "분야명이나 상품 키워드를 알려주세요."
+            )
+
+        category_code, code_note = _resolve_category_code(tools, search_term, params.category_code)
+        if not category_code:
+            note_block = f"{code_note}\n\n" if code_note else ""
+            return (
+                f"### [{display_name} / {params.keyword}] 타겟 오디언스 검증\n"
+                f"{note_block}"
+                "❌ category_code를 확정하지 못해 조회를 진행할 수 없습니다. "
+                "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
+            )
+
         date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
 
         category_gender = _run(tools, "get_shopping_category_gender_trend", category_code=category_code, **date_kwargs)
@@ -260,7 +310,7 @@ class TargetAudienceValidationScenario(BaseScenario):
 
         note_block = f"{code_note}\n\n" if code_note else ""
         return (
-            f"### [{params.category_name} / {params.keyword}] 타겟 오디언스 검증\n"
+            f"### [{display_name} / {params.keyword}] 타겟 오디언스 검증\n"
             f"{note_block}"
             f"설정한 타겟: 성별={params.target_gender}, 연령대={params.target_age}\n"
             f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
@@ -312,7 +362,19 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
+        if not params.keyword or not params.keyword.strip():
+            return "### 키워드 타겟팅 세분화\n❌ keyword가 비어 있어 조회할 수 없습니다. 검색 키워드를 알려주세요."
+
         category_code, code_note = _resolve_category_code(tools, params.keyword, params.category_code)
+        if not category_code:
+            note_block = f"{code_note}\n\n" if code_note else ""
+            return (
+                f"### '{params.keyword}' 키워드 타겟팅 세분화\n"
+                f"{note_block}"
+                "❌ category_code를 확정하지 못해 조회를 진행할 수 없습니다. "
+                "정확한 네이버쇼핑 분야명이나 category_code를 알려주세요."
+            )
+
         date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
         gender_result = _run(tools, "get_shopping_keyword_gender_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
         age_result = _run(tools, "get_shopping_keyword_age_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)

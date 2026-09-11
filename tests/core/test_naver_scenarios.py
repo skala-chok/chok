@@ -100,6 +100,46 @@ def test_new_product_keyword_trend_empty_code_auto_resolved():
     assert "50003854" in result
 
 
+def test_target_audience_validation_falls_back_to_keyword_when_category_name_empty():
+    """실제 버그 재현: 라우터가 category_name을 빈 문자열로 넘겨도 keyword로 정상 조회되어야 한다."""
+    scenario = TargetAudienceValidationScenario()
+    gender_text = "[러닝화]\n  - 2026-06-01 (f): 20\n  - 2026-06-01 (m): 100"
+    age_text = "[러닝화]\n  - 2026-06-01 (40): 100\n  - 2026-06-01 (20): 10"
+    lookup = _lookup_tool("50003854")
+    tools = {
+        "find_naver_category_code": lookup,
+        "get_shopping_category_gender_trend": _tool(gender_text),
+        "get_shopping_category_age_trend": _tool(age_text),
+        "get_shopping_keyword_gender_trend": _tool(gender_text),
+        "get_shopping_keyword_age_trend": _tool(age_text),
+    }
+    params = TargetAudienceValidationParams(
+        category_name="", category_code="", keyword="러닝화",
+        target_gender="m", target_age="20", start_date="2026-06-11", end_date="2026-09-11",
+    )
+    result = scenario.execute(params, tools)
+
+    # find_naver_category_code가 빈 category_name이 아니라 keyword("러닝화")로 호출돼야 한다.
+    lookup.invoke.assert_called_once_with({"keyword": "러닝화"})
+    assert "가드레일" not in result
+    assert "사용된 category_code: 50003854" in result
+    assert "일치" in result
+
+
+def test_target_audience_validation_early_exit_when_no_search_term_available():
+    scenario = TargetAudienceValidationScenario()
+    tools = {"find_naver_category_code": _lookup_tool("50000000")}
+    params = TargetAudienceValidationParams(
+        category_name="", category_code="", keyword="",
+        target_gender="m", target_age="20", start_date="2026-06-11", end_date="2026-09-11",
+    )
+    result = scenario.execute(params, tools)
+
+    assert "비어 있어" in result
+    # 검색어가 아예 없으므로 조회 Tool을 시도조차 하지 않아야 한다.
+    tools["find_naver_category_code"].invoke.assert_not_called()
+
+
 def test_target_audience_validation_detects_mismatch():
     scenario = TargetAudienceValidationScenario()
     gender_text = "[50000000]\n  - 2026-01-01 (f): 100\n  - 2026-01-01 (m): 30"
