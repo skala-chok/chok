@@ -203,9 +203,14 @@ def test_get_shopping_trends_mock(mock_get_datalab):
         "end_date": "2026-02-01"
     })
     assert "노트북" in res
-    assert "95.2%" in res
     assert "태블릿" in res
-    assert "62.3%" in res
+    # 마지막 구간뿐 아니라 전체 시계열이 다 포함되어야 추세(상승/하락) 판단이 가능하다.
+    assert "80.5" in res
+    assert "95.2" in res
+    assert "50.0" in res
+    assert "62.3" in res
+    assert "2026-01-01" in res
+    assert "2026-02-01" in res
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
