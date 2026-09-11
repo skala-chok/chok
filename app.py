@@ -48,32 +48,65 @@ st.markdown(
     .main-header {
         font-size: 2.2rem;
         font-weight: 700;
-        color: #1E3A8A;
+        color: var(--text-color, #1E3A8A);
         margin-bottom: 0.2rem;
     }
     .sub-header {
         font-size: 1.05rem;
-        color: #4B5563;
+        color: var(--text-color, #4B5563);
+        opacity: 0.8;
         margin-bottom: 1.5rem;
     }
+    .info-card {
+        background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.08));
+        border: 1px solid rgba(128, 128, 128, 0.25);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin-bottom: 14px;
+        color: var(--text-color, inherit);
+    }
+    .info-card b, .info-card strong {
+        color: var(--text-color, inherit);
+    }
+    .info-card code {
+        background-color: rgba(128, 128, 128, 0.18);
+        color: inherit;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
     .metric-card {
-        background-color: #F8FAFC;
-        border: 1px solid #E2E8F0;
+        background-color: var(--secondary-background-color, rgba(128, 128, 128, 0.08));
+        border: 1px solid rgba(128, 128, 128, 0.25);
         border-radius: 8px;
         padding: 12px 16px;
         text-align: center;
+        color: var(--text-color, inherit);
+    }
+    .badge-model {
+        background-color: rgba(59, 130, 246, 0.15);
+        color: #3B82F6;
+        border: 1px solid rgba(59, 130, 246, 0.35);
+        padding: 3px 10px;
+        border-radius: 9999px;
+        font-size: 0.88rem;
+        font-weight: 600;
+        vertical-align: middle;
+        margin-left: 10px;
+        display: inline-block;
     }
     .badge-enabled {
-        background-color: #DEF7EC;
-        color: #03543F;
+        background-color: rgba(16, 185, 129, 0.15);
+        color: #10B981;
+        border: 1px solid rgba(16, 185, 129, 0.3);
         padding: 2px 8px;
         border-radius: 9999px;
         font-size: 0.8rem;
         font-weight: 600;
     }
     .badge-disabled {
-        background-color: #FDE8E8;
-        color: #9B1C1C;
+        background-color: rgba(239, 68, 68, 0.15);
+        color: #EF4444;
+        border: 1px solid rgba(239, 68, 68, 0.3);
         padding: 2px 8px;
         border-radius: 9999px;
         font-size: 0.8rem;
@@ -311,7 +344,7 @@ with st.sidebar:
         help="에이전트 ReAct 루프 및 시나리오 리포트 생성에 사용되는 기본 언어 모델입니다.",
     )
     st.markdown(
-        f'<div style="background-color: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px;">'
+        f'<div class="info-card">'
         f'🧠 <b>현재 적용 모델</b>: <code>{model_name}</code><br>'
         f'🌡️ <b>Temperature</b>: <code>{settings.TEMPERATURE}</code>'
         f'</div>',
@@ -388,7 +421,7 @@ with st.sidebar:
 st.markdown(
     f'<div class="main-header">'
     f'🤖 SKALA Agent & Scenario Playground '
-    f'<span class="badge-enabled" style="font-size: 0.95rem; vertical-align: middle; margin-left: 12px; background-color: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE;">🧠 Model: {model_name}</span>'
+    f'<span class="badge-model">🧠 Model: {model_name}</span>'
     f'</div>',
     unsafe_allow_html=True,
 )
@@ -1063,7 +1096,7 @@ with tab_explorer:
     st.caption("프로젝트의 전체 모듈, 도구, 가드레일, 시나리오의 등록 상태와 코드 구조를 확인합니다.")
 
     st.markdown(
-        f'<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
+        f'<div class="info-card">'
         f'🧠 <b>현재 적용 LLM 모델</b>: <code>{model_name}</code> &nbsp;|&nbsp; '
         f'🌡️ <b>Temperature</b>: <code>{settings.TEMPERATURE}</code> &nbsp;|&nbsp; '
         f'📦 <b>등록 모듈</b>: <code>{len(all_mods)}개</code> &nbsp;|&nbsp; '
