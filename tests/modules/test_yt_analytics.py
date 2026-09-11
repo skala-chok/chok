@@ -7,7 +7,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.yt_analytics.module import YouTubeAnalyticsModule
-from src.modules.yt_analytics.tools import get_channel_stats, get_video_comments
+from src.modules.yt_analytics.tools import get_channel_stats, get_video_comments, get_video_metrics
 from src.modules.yt_analytics.guardrails import YouTubeAnalyticsGuardrail
 from src.modules.yt_analytics.context import YouTubeAnalyticsContextProvider
 from src.modules.yt_analytics.client import YouTubeAnalyticsClient
@@ -18,10 +18,11 @@ def test_yt_analytics_module_metadata():
     assert mod.name == "yt_analytics"
     assert "채널 통계" in mod.description or "YouTube" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 2
+    assert len(tools) == 3
     tool_names = [t.name for t in tools]
     assert "get_channel_stats" in tool_names
     assert "get_video_comments" in tool_names
+    assert "get_video_metrics" in tool_names
 
     guardrails = mod.get_guardrails()
     assert len(guardrails) == 1
@@ -234,6 +235,19 @@ def test_client_get_comments_params(mock_get, monkeypatch):
         timeout=5,
     )
     assert res == {"items": []}
+
+
+@patch("src.modules.yt_analytics.client.requests.get")
+def test_get_video_metrics_and_fallback(mock_get):
+    mock_get.return_value.json.return_value = {"items": [{"id": "v1", "snippet": {"title": "Test", "publishedAt": "2026-01-01T00:00:00Z"}, "statistics": {"viewCount": "100", "likeCount": "5", "commentCount": "2"}}]}
+    result = get_video_metrics.invoke({"video_ids": ["v1"]})
+    assert "참여율" in result
+    assert "일평균 조회수" in result
+
+    import requests
+    mock_get.side_effect = requests.exceptions.ConnectionError("offline")
+    result = YouTubeAnalyticsClient().get_video_metrics(["v1"])
+    assert "[Fallback Mock]" in result["items"][0]["snippet"]["title"]
 
 
 def test_yt_analytics_registry_discovery():

@@ -7,7 +7,10 @@
 import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.yt_search.module import YouTubeSearchModule
-from src.modules.yt_search.tools import search_youtube_videos, get_video_transcript
+from src.modules.yt_search.tools import (
+    find_youtube_channel, get_channel_videos, get_competitor_recent_uploads,
+    get_video_transcript, search_paid_promotion_videos, search_youtube_videos,
+)
 from src.modules.yt_search.guardrails import YouTubeSearchGuardrail
 from src.modules.yt_search.context import YouTubeSearchContextProvider
 from src.modules.yt_search.client import YouTubeSearchClient
@@ -18,10 +21,11 @@ def test_yt_search_module_metadata():
     assert mod.name == "yt_search"
     assert "YouTube" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 2
+    assert len(tools) == 6
     tool_names = [t.name for t in tools]
     assert "search_youtube_videos" in tool_names
     assert "get_video_transcript" in tool_names
+    assert {"find_youtube_channel", "get_channel_videos", "get_competitor_recent_uploads", "search_paid_promotion_videos"} <= set(tool_names)
 
     guardrails = mod.get_guardrails()
     assert len(guardrails) == 1
@@ -189,6 +193,27 @@ def test_client_search_videos_params(mock_get, monkeypatch):
     assert res == {"items": []}
 
 
+@patch("src.modules.yt_search.client.requests.get")
+def test_search_client_failure_returns_fallback(mock_get):
+    import requests
+
+    mock_get.side_effect = requests.exceptions.ConnectionError("offline")
+    result = YouTubeSearchClient().search_videos("phone")
+    assert "items" in result
+    assert "[Fallback Mock]" in result["items"][0]["snippet"]["title"]
+
+
+@patch("src.modules.yt_search.client.requests.get")
+def test_new_search_tools_use_required_filters(mock_get):
+    mock_get.return_value.json.return_value = {"items": []}
+    search_paid_promotion_videos.invoke({"query": "무선이어폰", "start_date": "2026-01-01"})
+    assert mock_get.call_args.kwargs["params"]["videoPaidProductPlacement"] == "true"
+    get_channel_videos.invoke({"channel_id": "UC1", "start_date": "2026-01-01", "end_date": "2026-02-01"})
+    assert mock_get.call_args.kwargs["params"]["channelId"] == "UC1"
+    find_youtube_channel.invoke({"company": "A사"})
+    get_competitor_recent_uploads.invoke({"channel_id": "UC1", "start_date": "2026-01-01"})
+
+
 def test_yt_search_registry_discovery():
     from src.core.registry import ModuleRegistry
     registry = ModuleRegistry()
@@ -196,4 +221,3 @@ def test_yt_search_registry_discovery():
     mod = registry.get_module("yt_search")
     assert mod is not None
     assert isinstance(mod, YouTubeSearchModule)
-

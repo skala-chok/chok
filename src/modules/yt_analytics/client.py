@@ -4,9 +4,13 @@
 # ➔ 다음 단계: 🟠 [Step 2] guardrails.py 로 이동하여 댓글 PII 마스킹 등 가드레일을 작성하세요.
 # ==============================================================================
 
+import logging
+from typing import Any, Dict, List
+
 import requests
-from typing import Any, Dict, List, Optional
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class YouTubeAnalyticsClient:
@@ -34,3 +38,19 @@ class YouTubeAnalyticsClient:
         resp = requests.get(url, params=params, timeout=5)
         resp.raise_for_status()
         return resp.json()
+
+    def get_video_metrics(self, video_ids: List[str]) -> Dict[str, Any]:
+        try:
+            response = requests.get(
+                f"{self.BASE_URL}/videos",
+                params={"part": "snippet,statistics", "id": ",".join(video_ids),
+                        "key": settings.YOUTUBE_API_KEY}, timeout=5,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as exc:
+            logger.warning("YouTube video metrics failed; returning fallback: %s", exc)
+            return {"items": [{"id": "fallback_video", "snippet": {
+                "title": "[Fallback Mock] YouTube metrics unavailable", "channelTitle": "System Fallback",
+                "publishedAt": "1970-01-01T00:00:00Z"},
+                "statistics": {"viewCount": "0", "likeCount": "0", "commentCount": "0"}}]}

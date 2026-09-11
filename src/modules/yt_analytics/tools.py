@@ -4,6 +4,8 @@
 # ➔ 다음 단계: 🟢 [Step 4] context.py 로 이동하여 통계/댓글 분석 지침을 작성하세요.
 # ==============================================================================
 
+from datetime import datetime, timezone
+
 from langchain_core.tools import tool
 from .client import YouTubeAnalyticsClient
 
@@ -48,6 +50,27 @@ def get_video_comments(video_id: str, max_comments: int = 10) -> str:
         return f"댓글 수집 실패: {str(e)}"
 
 
+@tool
+def get_video_metrics(video_ids: list[str]) -> str:
+    """Get public views, likes, comments, engagement rate, and daily average views for video IDs. Not ad-spend performance."""
+    data = client.get_video_metrics(video_ids)
+    rows = []
+    for item in data.get("items", []):
+        stats = item.get("statistics", {})
+        views, likes, comments = (int(stats.get(key, 0)) for key in ("viewCount", "likeCount", "commentCount"))
+        engagement = ((likes + comments) / views * 100) if views else 0
+        published_at = item.get("snippet", {}).get("publishedAt", "")
+        try:
+            age_days = max(1, (datetime.now(timezone.utc) - datetime.fromisoformat(published_at.replace("Z", "+00:00"))).days)
+        except ValueError:
+            age_days = 1
+        rows.append(
+            f"- {item.get('snippet', {}).get('title', 'N/A')} | URL: https://www.youtube.com/watch?v={item.get('id', 'N/A')} "
+            f"| 조회수: {views:,} | 좋아요: {likes:,} | 댓글: {comments:,} | 참여율: {engagement:.2f}% | 일평균 조회수: {views / age_days:,.0f}"
+        )
+    return "\n".join(rows) or "영상 지표를 찾을 수 없습니다."
+
+
 # ==============================================================================
 # [Tool 추가 영역]
 # 새로운 도구(Tool)를 정의하려면 이 영역 아래에 @tool 데코레이터를 사용하여 함수를 추가하시면 됩니다.
@@ -60,4 +83,3 @@ def get_video_comments(video_id: str, max_comments: int = 10) -> str:
 # 
 # ※ 주의: 새로 작성한 tool은 module.py의 get_tools() 반환 리스트에도 반드시 등록해 주세요.
 # ==============================================================================
-
