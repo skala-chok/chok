@@ -59,27 +59,22 @@ class YouTubeAnalyticsClient:
             )
             response.raise_for_status()
             data = response.json()
-        except requests.exceptions.HTTPError as error:
-            code = "apiError"
-            status = error.response.status_code if error.response is not None else None
+        except requests.exceptions.HTTPError as err:
+            status = err.response.status_code if err.response is not None else None
             try:
-                reasons = error.response.json()["error"]["errors"]
-                code = next(
-                    (item["reason"] for item in reasons if item["reason"] in ERROR_MESSAGES),
-                    code,
-                )
-            except (ValueError, KeyError, TypeError, AttributeError):
-                pass
+                errors = err.response.json().get("error", {}).get("errors", [])
+                code = next((e["reason"] for e in errors if e.get("reason") in ERROR_MESSAGES), "apiError")
+            except Exception:
+                code = "apiError"
             raise YouTubeAPIError(code, status) from None
         except requests.exceptions.JSONDecodeError:
             raise YouTubeAPIError("invalidResponse") from None
         except requests.exceptions.RequestException:
             raise YouTubeAPIError("networkError") from None
-        except ValueError:
+        except Exception:
             raise YouTubeAPIError("invalidResponse") from None
-        if not isinstance(data, dict) or not isinstance(data.get("items"), list):
-            raise YouTubeAPIError("invalidResponse")
-        if any(not isinstance(item, dict) for item in data["items"]):
+
+        if not isinstance(data, dict) or not isinstance(data.get("items"), list) or any(not isinstance(i, dict) for i in data["items"]):
             raise YouTubeAPIError("invalidResponse")
         return data
 
