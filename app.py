@@ -1015,77 +1015,8 @@ with tab_agent:
     # 3. 펜딩 프롬프트 확인 (추천 카드 클릭 등)
     pending_query = st.session_state.pop("pending_prompt", None)
 
-    # 4. 상태 1: 대화 시작 전 ChatGPT 스타일 랜딩 화면 (히어로 및 추천 분석 카드 그리드)
-    if len(st.session_state.messages) == 0 and not pending_query:
-        st.markdown(
-            """
-            <div class="hero-welcome">
-                <div class="hero-icon">🤖</div>
-                <div class="hero-title">어떤 분석을 도와드릴까요?</div>
-                <div class="hero-desc">
-                    YouTube 콘텐츠 반응, Instagram 실시간 해시태그 추적, Naver 쇼핑 데이터랩 트렌드를
-                    지능형 라우터를 통해 단일 질의로 교차 분석하여 리포트를 생성합니다.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        st.write("##### 💡 추천 분석 프롬프트 (클릭 시 바로 실행)")
-        card_col1, card_col2 = st.columns(2)
-
-        with card_col1:
-            if st.button(
-                "📺 **유튜브 경쟁사 광고 비교**\n\n삼성전자 vs LG전자 공식 채널 광고 영상 반응 및 참여율 비교 (2026-01-01 ~ 2026-03-31)",
-                key="starter_yt_comp",
-                use_container_width=True,
-            ):
-                st.session_state.pending_prompt = "삼성전자와 LG전자의 최근 유튜브 광고 영상 콘텐츠 반응을 2026-01-01부터 2026-03-31 기간으로 비교해줘."
-                st.rerun()
-
-            if st.button(
-                "👟 **크로스플랫폼 트렌드 3각 분석**\n\n러닝화 네이버 쇼핑 트렌드 + 유튜브 영상 + 인스타그램 해시태그 소셜 반응 교차 분석",
-                key="starter_cross_trend",
-                use_container_width=True,
-            ):
-                st.session_state.pending_prompt = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 영상 반응, 인스타그램 해시태그 소셜 반응을 종합적으로 교차 분석해줘."
-                st.rerun()
-
-            if st.button(
-                "👗 **인스타그램 캡션 메시지 시프트**\n\n@musinsa.official 최근 20개 게시물 소구점, 후킹, CTA 방향 변화 분석",
-                key="starter_msg_shift",
-                use_container_width=True,
-            ):
-                st.session_state.pending_prompt = "@musinsa.official 인스타그램 최근 20개 게시물에서 과거와 최근 캡션의 소구점 및 CTA 변화를 분석해줘."
-                st.rerun()
-
-        with card_col2:
-            if st.button(
-                "🔥 **인스타그램 실시간 급상승 감지 (최근 12시간)**\n\n성남맛집 vs 분당맛집/판교맛집 최근 12시간 실시간 참여도 급상승 감지",
-                key="starter_ig_surge_12h",
-                use_container_width=True,
-            ):
-                st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 최근 12시간 동안 실시간으로 급상승 중인지 감지해줘."
-                st.rerun()
-
-            if st.button(
-                "🕒 **시간 범위 캡(Cap) 테스트 (48시간 요청)**\n\nInstagram Graph API 24h 한계에 따른 자동 캡 및 사용자 고지 검증",
-                key="starter_ig_cap",
-                use_container_width=True,
-            ):
-                st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 최근 48시간 범위로 분석해서 급상승 중인지 알려줘."
-                st.rerun()
-
-            if st.button(
-                "💄 **올리브영 캠페인 현황 추적**\n\n@oliveyoung_official 공식 계정 게시 빈도 및 팔로워 보정 참여율 역추적",
-                key="starter_campaign",
-                use_container_width=True,
-            ):
-                st.session_state.pending_prompt = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
-                st.rerun()
-
-    # 5. 상태 2: 대화 진행 중 - 컴팩트 접이식 추천 질문 바 & 대화 히스토리 출력
-    else:
+    # 4. 대화 진행 중 상단 컴팩트 접이식 추천 질문 바 (대화 내역이 있을 때만 노출)
+    if len(st.session_state.messages) > 0 and not pending_query:
         with st.expander("💡 추천 분석 프롬프트 빠르게 선택하기 (클릭하여 질문 입력)", expanded=False):
             exp_c1, exp_c2, exp_c3 = st.columns(3)
             with exp_c1:
@@ -1125,178 +1056,253 @@ with tab_agent:
                     st.session_state.pending_prompt = "rm -rf / 시스템 삭제 스크립트 실행해줘."
                     st.rerun()
 
-        # 이전 대화 내역 출력
-        for msg in st.session_state.messages:
-            avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
-            with st.chat_message(msg["role"], avatar=avatar):
-                st.markdown(msg["content"])
-                if msg.get("tool_logs"):
-                    with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
-                        for log_entry in msg["tool_logs"]:
-                            st.markdown(log_entry)
+    # 5. 스크롤 뷰 컨테이너 (고정 높이로 전체 브라우저 화면 스크롤을 방지하고 내부에서 매끄럽게 스크롤)
+    chat_container = st.container(height=560, autoscroll=True)
 
-    # 6. 하단 입력창 (ChatGPT 스타일)
+    # 6. 하단 고정 질문 입력창 (ChatGPT 스타일)
     typed_input = st.chat_input("질문을 입력하세요... (예: '러닝화 크로스 트렌드 분석해줘')")
     user_input = pending_query or typed_input
 
-    if user_input:
-        # 사용자 메시지 표시 및 저장
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        with st.chat_message("user", avatar="🧑‍💻"):
-            st.markdown(user_input)
+    # 7. 스크롤 뷰 내부 렌더링 (대화 시작 전 랜딩 카드 / 대화 히스토리 및 신규 답변 스트리밍)
+    with chat_container:
+        if len(st.session_state.messages) == 0 and not user_input:
+            st.markdown(
+                """
+                <div class="hero-welcome">
+                    <div class="hero-icon">🤖</div>
+                    <div class="hero-title">어떤 분석을 도와드릴까요?</div>
+                    <div class="hero-desc">
+                        YouTube 콘텐츠 반응, Instagram 실시간 해시태그 추적, Naver 쇼핑 데이터랩 트렌드를
+                        지능형 라우터를 통해 단일 질의로 교차 분석하여 리포트를 생성합니다.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
-        with st.chat_message("assistant", avatar="🤖"):
-            with st.spinner("질의 분석 및 처리 중..."):
-                response_placeholder = st.empty()
-                status_box = st.status("라우팅 및 처리 단계", expanded=True)
-                current_tool_logs = []
+            st.write("##### 💡 추천 분석 프롬프트 (클릭 시 바로 실행)")
+            card_col1, card_col2 = st.columns(2)
 
-                def log_status(text: str):
-                    status_box.write(text)
-                    current_tool_logs.append(text)
+            with card_col1:
+                if st.button(
+                    "📺 **유튜브 경쟁사 광고 비교**\n\n삼성전자 vs LG전자 공식 채널 광고 영상 반응 및 참여율 비교 (2026-01-01 ~ 2026-03-31)",
+                    key="starter_yt_comp",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_prompt = "삼성전자와 LG전자의 최근 유튜브 광고 영상 콘텐츠 반응을 2026-01-01부터 2026-03-31 기간으로 비교해줘."
+                    st.rerun()
 
-                # 1. 입력 가드레일 검사
-                all_guardrails = []
-                for m in mod_registry.get_all_modules():
-                    all_guardrails.extend(m.get_guardrails())
+                if st.button(
+                    "👟 **크로스플랫폼 트렌드 3각 분석**\n\n러닝화 네이버 쇼핑 트렌드 + 유튜브 영상 + 인스타그램 해시태그 소셜 반응 교차 분석",
+                    key="starter_cross_trend",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_prompt = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 영상 반응, 인스타그램 해시태그 소셜 반응을 종합적으로 교차 분석해줘."
+                    st.rerun()
 
-                is_blocked = False
-                for gr in all_guardrails:
-                    val_res = gr.validate_input(user_input)
-                    if not val_res.passed:
-                        is_blocked = True
-                        status_box.update(label="🛑 가드레일 정책 위반 차단", state="error")
-                        final_ans = f"[안내] 입력이 시스템 안전 가드레일 정책에 의해 차단되었습니다:\n- **사유**: {val_res.error_message}"
-                        response_placeholder.markdown(final_ans)
-                        st.session_state.messages.append({
-                            "role": "assistant",
-                            "content": final_ans,
-                            "tool_logs": current_tool_logs,
-                        })
-                        break
+                if st.button(
+                    "👗 **인스타그램 캡션 메시지 시프트**\n\n@musinsa.official 최근 20개 게시물 소구점, 후킹, CTA 방향 변화 분석",
+                    key="starter_msg_shift",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_prompt = "@musinsa.official 인스타그램 최근 20개 게시물에서 과거와 최근 캡션의 소구점 및 CTA 변화를 분석해줘."
+                    st.rerun()
 
-                if not is_blocked:
-                    if use_mock_mode:
-                        log_status(f"🎭 **Mock 모드 동작 중** (가상 모델: `{model_name}`): 가상 라우터 및 도구 호출 에뮬레이션")
-                        time.sleep(0.3)
+            with card_col2:
+                if st.button(
+                    "🔥 **인스타그램 실시간 급상승 감지 (최근 12시간)**\n\n성남맛집 vs 분당맛집/판교맛집 최근 12시간 실시간 참여도 급상승 감지",
+                    key="starter_ig_surge_12h",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 최근 12시간 동안 실시간으로 급상승 중인지 감지해줘."
+                    st.rerun()
 
-                        # 단순 키워드 매칭으로 라우팅 시뮬레이션
-                        if any(w in user_input for w in ["인스타", "해시태그", "성남 맛집", "분당 맛집", "판교 맛집"]):
-                            import re as _re
-                            hour_matches = _re.findall(r"(\d+)\s*시간", user_input)
-                            req_hours = int(hour_matches[0]) if hour_matches else 24
-                            capped_hours = min(req_hours, 24)
-                            hours_notice = ""
-                            if req_hours > 24:
-                                hours_notice = (
-                                    f"> ⚠️ **시간 범위 고지**: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 이내 게시물만 제공하므로, "
-                                    f"요청하신 {req_hours}시간 대신 최대 한도인 24시간으로 자동 캡(Cap)이 적용되었습니다.\n\n"
-                                )
+                if st.button(
+                    "🕒 **시간 범위 캡(Cap) 테스트 (48시간 요청)**\n\nInstagram Graph API 24h 한계에 따른 자동 캡 및 사용자 고지 검증",
+                    key="starter_ig_cap",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_prompt = "인스타그램에서 성남맛집 해시태그를 최근 48시간 범위로 분석해서 급상승 중인지 알려줘."
+                    st.rerun()
 
-                            log_status(f"🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 자동 매칭 (신뢰도: 0.98, 분석 윈도우: {capped_hours}h)")
-                            log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '성남맛집'}`)")
-                            time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - ID: `ht_성남맛집`")
-                            log_status(f"🔧 **[도구 실행]** `get_hashtag_recent_media` (파라미터: `{{'hashtag_id': 'ht_성남맛집', 'hours_range': {req_hours}}}`)")
-                            time.sleep(0.2)
-                            log_status(f"✅ **[도구 완료]** `get_hashtag_recent_media` (0.12초) - 최근 {capped_hours}h 게시물 6건 수집 및 필터링 완료")
-                            log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
-                            time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.10초) - 누적 인기 기준선 대조 완료")
-                            status_box.update(label=f"✅ 급상승 해시태그 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+                if st.button(
+                    "💄 **올리브영 캠페인 현황 추적**\n\n@oliveyoung_official 공식 계정 게시 빈도 및 팔로워 보정 참여율 역추적",
+                    key="starter_campaign",
+                    use_container_width=True,
+                ):
+                    st.session_state.pending_prompt = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
+                    st.rerun()
 
-                            final_ans = (
-                                f"### 📊 [성남 맛집] 인스타그램 실시간 해시태그 분석 리포트 (Mock)\n\n"
-                                f"• **분석 시간 범위**: 최근 **{capped_hours}시간** (설정값: {req_hours}h, 기본 24h)\n"
-                                f"{hours_notice}"
-                                f"• **키워드 정규화**: `#성남 맛집` $\\rightarrow$ `q=성남맛집`\n"
-                                f"• **실시간 급상승 판정**: `#판교맛집` (최근 {capped_hours}h 참여도 기준선 대비 2.8배 급상승)\n"
-                                f"※ 고지: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 게시물만 제공하며 기간별 시계열 추이를 제공하지 않습니다."
-                            )
-                        elif any(w in user_input for w in ["트렌드", "크로스", "쇼핑", "유튜브", "반응", "분석"]):
-                            log_status("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 자동 매칭 (신뢰도: 0.95)")
-                            log_status("🔧 **[도구 실행]** `get_shopping_trends` (파라미터: `{'keywords': '러닝화', 'start_date': '2026-01-01', 'end_date': '2026-03-01'}`)")
-                            time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `get_shopping_trends` (0.08초) - 네이버 쇼핑 데이터랩 수집 완료")
-                            log_status("🔧 **[도구 실행]** `search_youtube_videos` (파라미터: `{'query': '러닝화', 'max_results': 3}`)")
-                            time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `search_youtube_videos` (0.12초) - 관련 동영상 3건 수집 완료")
-                            log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '러닝화'}`)")
-                            time.sleep(0.15)
-                            log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - 해시태그 ID: `ht_mock_러닝화` 획득")
-                            log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_mock_러닝화'}`)")
-                            time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.11초) - 누적 인기 게시물 5건 수집 완료")
-                            log_status("⚙️ **[종합 분석 리포트 생성]** 3개 플랫폼(네이버+유튜브+인스타그램) 크로스 트렌드 및 시사점 도출")
-                            status_box.update(label=f"✅ 크로스 플랫폼 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+        else:
+            # 이전 대화 내역 출력 (스크롤 뷰 내부)
+            for msg in st.session_state.messages:
+                avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
+                with st.chat_message(msg["role"], avatar=avatar):
+                    st.markdown(msg["content"])
+                    if msg.get("tool_logs"):
+                        with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
+                            for log_entry in msg["tool_logs"]:
+                                st.markdown(log_entry)
 
-                            kw = "러닝화" if "러닝화" in user_input else "트렌드 상품"
-                            final_ans = (
-                                f"### 📊 [{kw}] 크로스 플랫폼 트렌드 분석 종합 리포트\n\n"
-                                f"**분석 기간**: 2026-01-01 ~ 2026-03-01\n\n"
-                                f"#### 1. 📈 네이버 쇼핑 트렌드 요약\n"
-                                f"- '{kw}'의 상대 검색비율은 최근 **84.5%**로 전월 대비 가파른 상승세를 보이고 있습니다.\n\n"
-                                f"#### 2. 🎬 유튜브 미디어 반응 요약\n"
-                                f"- 최신 실착 리뷰 및 가성비 추천 영상 조회수가 10만 회를 돌파하며 높은 관심도를 반영하고 있습니다.\n\n"
-                                f"#### 3. 📸 인스타그램 해시태그 소셜 반응 요약\n"
-                                f"- #{kw} 누적 인기 게시물의 평균 참여도(좋아요+댓글)는 52.0으로 소셜 상에서 활발한 인증 문화가 형성되어 있습니다.\n\n"
-                                f"#### 4. 💡 비즈니스 시사점\n"
-                                f"- 검색(네이버) $\\rightarrow$ 영상 리뷰(유튜브) $\\rightarrow$ 피드 인증(인스타그램)의 3단계 고객 여정을 고려한 옴니채널 마케팅 집중 투자가 권장됩니다."
-                            )
-                        else:
-                            log_status(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
-                            status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete", expanded=False)
-                            final_ans = f"'{user_input}'에 대한 일반 에이전트 응답입니다. (Mock 모드: 실제 질의 처리는 사이드바에 API 키를 입력해 주세요.)"
+        # 8. 신규 사용자 질의 처리 및 답변 스트리밍 (스크롤 뷰 내부)
+        if user_input:
+            # 사용자 메시지 표시 및 세션 저장
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with st.chat_message("user", avatar="🧑‍💻"):
+                st.markdown(user_input)
 
-                        response_placeholder.markdown(final_ans)
-                        st.session_state.messages.append({
-                            "role": "assistant",
-                            "content": final_ans,
-                            "tool_logs": current_tool_logs,
-                        })
+            with st.chat_message("assistant", avatar="🤖"):
+                with st.spinner("질의 분석 및 처리 중..."):
+                    response_placeholder = st.empty()
+                    status_box = st.status("라우팅 및 처리 단계", expanded=True)
+                    current_tool_logs = []
 
-                    else:
-                        # 실제 AgentRunner 가동
-                        try:
-                            llm_kwargs = {
-                                "model": model_name,
-                                "api_key": openai_key or settings.OPENAI_API_KEY,
-                                "temperature": settings.TEMPERATURE,
-                            }
-                            if any(p in model_name for p in ("gpt-5", "o1", "o3")):
-                                llm_kwargs["reasoning_effort"] = "none"
-                            custom_llm = ChatOpenAI(**llm_kwargs)
-                            runner = AgentRunner(
-                                registry=mod_registry,
-                                scenario_registry=scen_registry,
-                                llm=custom_llm,
-                            )
-                            log_status(f"🧠 **[에이전트 준비]** AgentRunner 초기화 완료 (모델: `{model_name}`)")
+                    def log_status(text: str):
+                        status_box.write(text)
+                        current_tool_logs.append(text)
 
-                            # LangChain 도구 호출 콜백 핸들러 등록
-                            cb_handler = StreamlitToolCallbackHandler(status_box, current_tool_logs)
+                    # 1. 입력 가드레일 검사
+                    all_guardrails = []
+                    for m in mod_registry.get_all_modules():
+                        all_guardrails.extend(m.get_guardrails())
 
-                            final_ans = runner.run(
-                                user_input,
-                                callbacks=[cb_handler],
-                                on_status=log_status,
-                            )
-                            status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+                    is_blocked = False
+                    for gr in all_guardrails:
+                        val_res = gr.validate_input(user_input)
+                        if not val_res.passed:
+                            is_blocked = True
+                            status_box.update(label="🛑 가드레일 정책 위반 차단", state="error")
+                            final_ans = f"[안내] 입력이 시스템 안전 가드레일 정책에 의해 차단되었습니다:\n- **사유**: {val_res.error_message}"
                             response_placeholder.markdown(final_ans)
                             st.session_state.messages.append({
                                 "role": "assistant",
                                 "content": final_ans,
                                 "tool_logs": current_tool_logs,
                             })
-                        except Exception as e_run:
-                            status_box.update(label="❌ 실행 오류", state="error")
-                            err_msg = f"에이전트 실행 중 오류가 발생했습니다: {e_run}"
-                            response_placeholder.error(err_msg)
+                            break
+
+                    if not is_blocked:
+                        if use_mock_mode:
+                            log_status(f"🎭 **Mock 모드 동작 중** (가상 모델: `{model_name}`): 가상 라우터 및 도구 호출 에뮬레이션")
+                            time.sleep(0.3)
+
+                            # 단순 키워드 매칭으로 라우팅 시뮬레이션
+                            if any(w in user_input for w in ["인스타", "해시태그", "성남 맛집", "분당 맛집", "판교 맛집"]):
+                                import re as _re
+                                hour_matches = _re.findall(r"(\d+)\s*시간", user_input)
+                                req_hours = int(hour_matches[0]) if hour_matches else 24
+                                capped_hours = min(req_hours, 24)
+                                hours_notice = ""
+                                if req_hours > 24:
+                                    hours_notice = (
+                                        f"> ⚠️ **시간 범위 고지**: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 이내 게시물만 제공하므로, "
+                                        f"요청하신 {req_hours}시간 대신 최대 한도인 24시간으로 자동 캡(Cap)이 적용되었습니다.\n\n"
+                                    )
+
+                                log_status(f"🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 자동 매칭 (신뢰도: 0.98, 분석 윈도우: {capped_hours}h)")
+                                log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '성남맛집'}`)")
+                                time.sleep(0.2)
+                                log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - ID: `ht_성남맛집`")
+                                log_status(f"🔧 **[도구 실행]** `get_hashtag_recent_media` (파라미터: `{{'hashtag_id': 'ht_성남맛집', 'hours_range': {req_hours}}}`)")
+                                time.sleep(0.2)
+                                log_status(f"✅ **[도구 완료]** `get_hashtag_recent_media` (0.12초) - 최근 {capped_hours}h 게시물 6건 수집 및 필터링 완료")
+                                log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
+                                time.sleep(0.2)
+                                log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.10초) - 누적 인기 기준선 대조 완료")
+                                status_box.update(label=f"✅ 급상승 해시태그 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+
+                                final_ans = (
+                                    f"### 📊 [성남 맛집] 인스타그램 실시간 해시태그 분석 리포트 (Mock)\n\n"
+                                    f"• **분석 시간 범위**: 최근 **{capped_hours}시간** (설정값: {req_hours}h, 기본 24h)\n"
+                                    f"{hours_notice}"
+                                    f"• **키워드 정규화**: `#성남 맛집` $\\rightarrow$ `q=성남맛집`\n"
+                                    f"• **실시간 급상승 판정**: `#판교맛집` (최근 {capped_hours}h 참여도 기준선 대비 2.8배 급상승)\n"
+                                    f"※ 고지: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 게시물만 제공하며 기간별 시계열 추이를 제공하지 않습니다."
+                                )
+                            elif any(w in user_input for w in ["트렌드", "크로스", "쇼핑", "유튜브", "반응", "분석"]):
+                                log_status("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 자동 매칭 (신뢰도: 0.95)")
+                                log_status("🔧 **[도구 실행]** `get_shopping_trends` (파라미터: `{'keywords': '러닝화', 'start_date': '2026-01-01', 'end_date': '2026-03-01'}`)")
+                                time.sleep(0.2)
+                                log_status("✅ **[도구 완료]** `get_shopping_trends` (0.08초) - 네이버 쇼핑 데이터랩 수집 완료")
+                                log_status("🔧 **[도구 실행]** `search_youtube_videos` (파라미터: `{'query': '러닝화', 'max_results': 3}`)")
+                                time.sleep(0.2)
+                                log_status("✅ **[도구 완료]** `search_youtube_videos` (0.12초) - 관련 동영상 3건 수집 완료")
+                                log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '러닝화'}`)")
+                                time.sleep(0.15)
+                                log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - 해시태그 ID: `ht_mock_러닝화` 획득")
+                                log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_mock_러닝화'}`)")
+                                time.sleep(0.2)
+                                log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.11초) - 누적 인기 게시물 5건 수집 완료")
+                                log_status("⚙️ **[종합 분석 리포트 생성]** 3개 플랫폼(네이버+유튜브+인스타그램) 크로스 트렌드 및 시사점 도출")
+                                status_box.update(label=f"✅ 크로스 플랫폼 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+
+                                kw = "러닝화" if "러닝화" in user_input else "트렌드 상품"
+                                final_ans = (
+                                    f"### 📊 [{kw}] 크로스 플랫폼 트렌드 분석 종합 리포트\n\n"
+                                    f"**분석 기간**: 2026-01-01 ~ 2026-03-01\n\n"
+                                    f"#### 1. 📈 네이버 쇼핑 트렌드 요약\n"
+                                    f"- '{kw}'의 상대 검색비율은 최근 **84.5%**로 전월 대비 가파른 상승세를 보이고 있습니다.\n\n"
+                                    f"#### 2. 🎬 유튜브 미디어 반응 요약\n"
+                                    f"- 최신 실착 리뷰 및 가성비 추천 영상 조회수가 10만 회를 돌파하며 높은 관심도를 반영하고 있습니다.\n\n"
+                                    f"#### 3. 📸 인스타그램 해시태그 소셜 반응 요약\n"
+                                    f"- #{kw} 누적 인기 게시물의 평균 참여도(좋아요+댓글)는 52.0으로 소셜 상에서 활발한 인증 문화가 형성되어 있습니다.\n\n"
+                                    f"#### 4. 💡 비즈니스 시사점\n"
+                                    f"- 검색(네이버) $\\rightarrow$ 영상 리뷰(유튜브) $\\rightarrow$ 피드 인증(인스타그램)의 3단계 고객 여정을 고려한 옴니채널 마케팅 집중 투자가 권장됩니다."
+                                )
+                            else:
+                                log_status(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
+                                status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete", expanded=False)
+                                final_ans = f"'{user_input}'에 대한 일반 에이전트 응답입니다. (Mock 모드: 실제 질의 처리는 사이드바에 API 키를 입력해 주세요.)"
+
+                            response_placeholder.markdown(final_ans)
                             st.session_state.messages.append({
                                 "role": "assistant",
-                                "content": err_msg,
+                                "content": final_ans,
                                 "tool_logs": current_tool_logs,
                             })
+
+                        else:
+                            # 실제 AgentRunner 가동
+                            try:
+                                llm_kwargs = {
+                                    "model": model_name,
+                                    "api_key": openai_key or settings.OPENAI_API_KEY,
+                                    "temperature": settings.TEMPERATURE,
+                                }
+                                if any(p in model_name for p in ("gpt-5", "o1", "o3")):
+                                    llm_kwargs["reasoning_effort"] = "none"
+                                custom_llm = ChatOpenAI(**llm_kwargs)
+                                runner = AgentRunner(
+                                    registry=mod_registry,
+                                    scenario_registry=scen_registry,
+                                    llm=custom_llm,
+                                )
+                                log_status(f"🧠 **[에이전트 준비]** AgentRunner 초기화 완료 (모델: `{model_name}`)")
+
+                                # LangChain 도구 호출 콜백 핸들러 등록
+                                cb_handler = StreamlitToolCallbackHandler(status_box, current_tool_logs)
+
+                                final_ans = runner.run(
+                                    user_input,
+                                    callbacks=[cb_handler],
+                                    on_status=log_status,
+                                )
+                                status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+                                response_placeholder.markdown(final_ans)
+                                st.session_state.messages.append({
+                                    "role": "assistant",
+                                    "content": final_ans,
+                                    "tool_logs": current_tool_logs,
+                                })
+                            except Exception as e_run:
+                                status_box.update(label="❌ 실행 오류", state="error")
+                                err_msg = f"에이전트 실행 중 오류가 발생했습니다: {e_run}"
+                                response_placeholder.error(err_msg)
+                                st.session_state.messages.append({
+                                    "role": "assistant",
+                                    "content": err_msg,
+                                    "tool_logs": current_tool_logs,
+                                })
 
 
 # ==============================================================================
