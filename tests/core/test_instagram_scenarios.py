@@ -165,6 +165,55 @@ class TestScenario1HashtagSurgeDetection:
         report = HashtagSurgeDetectionReport(**data)
         assert report.base_keyword == "성남 맛집"
         assert len(report.metrics) == 3
+        assert report.time_window_hours == 24
+
+    def test_scenario1_custom_hours_range(self):
+        """사용자가 6시간 등 특정 시간 범위를 지정했을 때 정상 반영되는지 검증."""
+        scen = HashtagSurgeDetectionScenario()
+        tools = {
+            "search_hashtag_id": mock_search_hashtag_id,
+            "get_hashtag_recent_media": mock_get_hashtag_recent_media,
+            "get_hashtag_top_media": mock_get_hashtag_top_media,
+        }
+        params = HashtagSurgeDetectionParams(
+            base_keyword="성남 맛집",
+            compare_hashtags=["#판교 맛집"],
+            hours_range=6,
+        )
+
+        output = scen.execute(params=params, tools=tools)
+        assert "최신글 수(6h)" in output
+        assert "최근 6시간" in output
+
+        json_str = output.split("```json")[1].split("```")[0].strip()
+        data = json.loads(json_str)
+        report = HashtagSurgeDetectionReport(**data)
+        assert report.time_window_hours == 6
+        assert report.metrics[0].time_window_hours == 6
+
+    def test_scenario1_hours_range_over_24_capped(self):
+        """사용자가 24시간을 초과하여 지정했을 때 24시간으로 캡 적용 및 고지되는지 검증."""
+        scen = HashtagSurgeDetectionScenario()
+        tools = {
+            "search_hashtag_id": mock_search_hashtag_id,
+            "get_hashtag_recent_media": mock_get_hashtag_recent_media,
+            "get_hashtag_top_media": mock_get_hashtag_top_media,
+        }
+        params = HashtagSurgeDetectionParams(
+            base_keyword="성남 맛집",
+            compare_hashtags=["#판교 맛집"],
+            hours_range=48,
+        )
+
+        output = scen.execute(params=params, tools=tools)
+        assert "최신글 수(24h)" in output
+        assert "API 최대 한도인 24시간" in output
+
+        json_str = output.split("```json")[1].split("```")[0].strip()
+        data = json.loads(json_str)
+        report = HashtagSurgeDetectionReport(**data)
+        assert report.time_window_hours == 24
+        assert report.hours_notice is not None
 
 
 class TestScenario2CompetitorCampaignTracking:
@@ -325,6 +374,29 @@ class TestScenarioParameterCoercion:
         # 5. None 또는 빈 문자열 전달 시 기본값 유지
         p5 = HashtagSurgeDetectionParams(compare_hashtags="")
         assert p5.compare_hashtags == ["#성남 맛집", "#분당 맛집", "#판교 맛집"]
+
+        # 6. hours_range 파싱 및 기본값 24시간 검증
+        # 6-1. 사용자 미언급 시 기본값 24
+        p6 = HashtagSurgeDetectionParams()
+        assert p6.hours_range == 24
+
+        # 6-2. 문자열 형태(예: '6시간', '12') 전달 시 숫자로 자동 변환
+        p7 = HashtagSurgeDetectionParams(hours_range="6시간")
+        assert p7.hours_range == 6
+
+        p8 = HashtagSurgeDetectionParams(hours_range="12")
+        assert p8.hours_range == 12
+
+        # 6-3. None / 빈 문자열 / PydanticUndefined 시 기본값 24
+        p9 = HashtagSurgeDetectionParams(hours_range="PydanticUndefined")
+        assert p9.hours_range == 24
+
+        p10 = HashtagSurgeDetectionParams(hours_range=None)
+        assert p10.hours_range == 24
+
+        # 6-4. 음수나 0 입력 시 기본값 24로 방어
+        p11 = HashtagSurgeDetectionParams(hours_range=-3)
+        assert p11.hours_range == 24
 
     def test_competitor_campaign_tracking_params_coercion(self):
         # 1. PydanticUndefined 문자열 전달 시 기본값 리스트로 안전 복구
