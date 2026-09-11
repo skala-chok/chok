@@ -661,6 +661,40 @@ SCENARIO_PRESETS: Dict[str, Dict[str, Any]] = {
         },
         "description": "네이버 데이터랩 클릭 추이와 유튜브 최신 영상 반응을 교차 결합한 종합 이커머스 리포트를 생성합니다.",
     },
+    "naver_new_product_keyword_trend": {
+        "label": "스킨/토너 신제품 키워드 트렌드 조사 (분야 + 세부 키워드)",
+        "params": {
+            "category_name": "스킨/토너",
+            "category_code": "50000167",
+            "keywords": "수분스킨,저자극스킨,맨즈스킨",
+            "start_date": "2026-01-01",
+            "end_date": "2026-03-31",
+        },
+        "description": "네이버쇼핑 분야 전체 트렌드와 통합검색/쇼핑 영역 기준 세부 키워드 상대 관심도를 비교 조사합니다.",
+    },
+    "naver_target_audience_validation": {
+        "label": "스킨/토너 수분스킨 타겟 오디언스(20대 여성) 데이터 검증",
+        "params": {
+            "category_name": "스킨/토너",
+            "category_code": "50000167",
+            "keyword": "수분스킨",
+            "target_gender": "f",
+            "target_age": "20",
+            "start_date": "2026-01-01",
+            "end_date": "2026-03-31",
+        },
+        "description": "설정한 타겟 고객층(여성/20대)이 실제 분야 및 키워드의 최고 관심 세그먼트와 부합하는지 실증 대조합니다.",
+    },
+    "naver_keyword_audience_segmentation": {
+        "label": "수분스킨 검색 사용자 성별/연령대 타겟팅 세분화 분석",
+        "params": {
+            "category_code": "50000167",
+            "keyword": "수분스킨",
+            "start_date": "2026-01-01",
+            "end_date": "2026-03-31",
+        },
+        "description": "광고 타겟팅을 위해 특정 검색 키워드의 성별·연령대별 관심도 분포를 세분화하여 확인합니다.",
+    },
 }
 
 
