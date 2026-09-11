@@ -2,7 +2,6 @@ import re
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Type
 
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,10 +11,9 @@ _TITLE_RE = re.compile(r"^\[(.+?)\]$")
 _POINT_RE = re.compile(r"^\s*-\s*([\d-]+)(?:\s*\(([^)]+)\))?:\s*([\d.]+)\s*$")
 _CANDIDATE_CODE_RE = re.compile(r"category_code=(\d+)")
 
-# execute()의 반환값은 팀 컨벤션상 순수 자연어 요약이어야 한다 (하네스 테스트가 반환 문자열의
-# 완전 일치/무마크업을 검증함). 그래서 차트에 필요한 원본 수치 데이터는 반환값에 절대 섞지 않고,
-# app.py가 실행 직후 이 딕셔너리를 읽어가는 사이드 채널로만 노출한다. 매 execute() 호출 시작 시
-# 이전 실행분을 지우므로, 같은 프로세스에서 연속 실행해도 이전 요청의 데이터가 섞이지 않는다.
+_GENDER_KR = {"m": "남성", "f": "여성"}
+
+# 차트용 원본 도구 결과: app.py가 실행 직후 읽어가며, 매 execute() 시작 시 초기화된다.
 LAST_RUN_TOOL_RESULTS: Dict[str, str] = {}
 
 
@@ -110,151 +108,93 @@ def _top_segment(points: List[Tuple[str, Optional[str], float]]) -> Optional[Tup
     return top_group, grouped[top_group]
 
 
-_GENDER_KR = {"m": "남성", "f": "여성"}
-
-
-def _narrate_keyword_segmentation(
-    llm: Optional[Any],
-    keyword: str,
-    start_date: str,
-    end_date: str,
-    gender_result: str,
-    age_result: str,
-    gender_top: Optional[Tuple[str, float]],
-    age_top: Optional[Tuple[str, float]],
-) -> str:
-    """성별·연령 분포 데이터를 표/숫자 나열이 아니라 결론 중심의 자연어 문단으로 설명한다.
-
-    LLM이 주어지면(일반적으로 AgentRunner가 context로 주입) 원본 데이터를 근거로 자연스러운
-    설명을 생성하고, LLM을 쓸 수 없는 상황(예: 단위 테스트, LLM 호출 실패)에는 이미 계산된
-    최고 세그먼트를 문장으로 풀어 쓰는 결정론적 폴백을 사용한다.
-    """
-    if llm is not None:
-        prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                "당신은 마케팅 데이터 분석가입니다. 네이버쇼핑 검색 클릭 데이터를 바탕으로 "
-                "광고 타겟팅에 바로 참고할 수 있는 결론을 설명하십시오.\n"
-                "반드시 지켜야 할 규칙:\n"
-                "1. 표, 글머리 기호, 날짜별 숫자 나열 없이 자연스러운 문단(2~4문장)으로만 작성하십시오.\n"
-                "2. 어떤 성별·연령대를 중심으로 타겟팅해야 하는지 결론을 가장 먼저 명확히 제시하십시오.\n"
-                "3. 근거가 되는 수치를 인용할 때는 문장 속에 자연스럽게 녹여 쓰십시오 (표 형태 금지).\n"
-                "4. ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량이 아니라는 점과, "
-                "관심도가 낮은 세그먼트라도 광고 타겟에서 배제할 근거는 아니라는 점을 결론 뒤에 자연스럽게 덧붙이십시오.\n"
-                "5. 제공된 데이터에 없는 내용은 추측하거나 지어내지 마십시오.",
-            ),
-            (
-                "human",
-                "키워드: {keyword}\n조회 기간: {start_date} ~ {end_date}\n\n"
-                "[성별 분포 원본 데이터]\n{gender_result}\n\n"
-                "[연령대별 분포 원본 데이터]\n{age_result}\n\n"
-                "[참고: 이미 계산된 최고 관심 세그먼트] 성별: {gender_top}, 연령대: {age_top}",
-            ),
-        ])
-        try:
-            chain = prompt | llm
-            response = chain.invoke({
-                "keyword": keyword,
-                "start_date": start_date,
-                "end_date": end_date,
-                "gender_result": gender_result,
-                "age_result": age_result,
-                "gender_top": f"{_GENDER_KR.get(gender_top[0], gender_top[0])} (ratio {gender_top[1]})" if gender_top else "판단 불가",
-                "age_top": f"{age_top[0]}대 (ratio {age_top[1]})" if age_top else "판단 불가",
-            })
-            text = response.content if hasattr(response, "content") else str(response)
-            if text and text.strip():
-                return text.strip()
-        except Exception:
-            pass  # LLM 호출 실패 시 아래 결정론적 폴백으로 진행
-
-    # LLM을 쓸 수 없을 때의 폴백: 이미 계산된 최고 세그먼트를 문장으로 풀어 쓴다.
-    sentences = [f"'{keyword}'을(를) 실제로 검색하는 사람들의 분포를 {start_date}~{end_date} 기간 데이터로 살펴봤습니다."]
-    if gender_top:
-        gender_kr = _GENDER_KR.get(gender_top[0], gender_top[0])
-        sentences.append(f"성별로는 {gender_kr}의 관심도가 가장 높게 나타나(상대 지수 {gender_top[1]}), 광고를 집행한다면 {gender_kr}을(를) 우선순위로 고려할 만합니다.")
+def _series_table(
+    series: Dict[str, List[Tuple[str, Optional[str], float]]],
+    group_header: Optional[str] = None,
+) -> List[str]:
+    """{title: [(period, group, ratio), ...]}를 마크다운 표 라인들로 변환한다."""
+    if not series:
+        return ["_(데이터 없음)_"]
+    if group_header:
+        lines = [f"| 항목 | 구간 | {group_header} | ratio |", "| :--- | :--- | :---: | ---: |"]
+        for title, points in series.items():
+            for period, group, ratio in points:
+                if group_header == "성별":
+                    group_disp = _GENDER_KR.get(group, group or "-")
+                else:
+                    group_disp = f"{group}대" if group else "-"
+                lines.append(f"| {title} | {period} | {group_disp} | {ratio} |")
     else:
-        sentences.append("성별 분포는 데이터가 부족해 판단하기 어렵습니다.")
-    if age_top:
-        sentences.append(f"연령대로는 {age_top[0]}대의 관심도가 가장 높았습니다(상대 지수 {age_top[1]}).")
-    else:
-        sentences.append("연령대별 분포도 데이터가 부족해 판단하기 어렵습니다.")
-    sentences.append("다만 이 수치는 조회 구간 내 최댓값을 100으로 환산한 상대값으로 실제 검색량이나 구매자 수를 의미하지 않으며, 관심도가 낮게 나온 세그먼트라도 광고 타겟에서 배제할 근거로 보기는 어렵습니다.")
-    return " ".join(sentences)
+        lines = ["| 항목 | 구간 | ratio |", "| :--- | :--- | ---: |"]
+        for title, points in series.items():
+            for period, _group, ratio in points:
+                lines.append(f"| {title} | {period} | {ratio} |")
+    return lines
 
 
-def _narrate_new_product_trend(
-    llm: Optional[Any],
+def _build_new_product_trend_report(
     display_name: str,
+    category_code: str,
     start_date: str,
     end_date: str,
     category_result: str,
     overall_result: str,
     keyword_result: str,
-    direction_lines: List[str],
 ) -> str:
-    """신제품 트렌드 조사 데이터를 표/숫자 나열이 아니라 결론 중심의 자연어 문단으로 설명한다."""
-    direction_summary = "\n".join(direction_lines) if direction_lines else "데이터 부족으로 추세 판정 불가"
-    if llm is not None:
-        prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                "당신은 신제품 마케팅을 준비하는 브랜드를 돕는 시장 분석가입니다. 네이버쇼핑 검색/클릭 트렌드 "
-                "데이터를 바탕으로 시장 진입 판단에 바로 참고할 수 있는 결론을 설명하십시오.\n"
-                "반드시 지켜야 할 규칙:\n"
-                "1. 표, 글머리 기호, 날짜별 숫자 나열 없이 자연스러운 문단(3~5문장)으로만 작성하십시오.\n"
-                "2. 해당 분야 전체 트렌드가 상승·하락·보합 중 어느 쪽인지, 어떤 세부 키워드가 뜨고 어떤 키워드가 "
-                "식고 있는지 결론을 먼저 제시하십시오.\n"
-                "3. 근거 수치는 문장 속에 자연스럽게 녹여 인용하십시오 (표 형태 금지).\n"
-                "4. 통합검색 기준 관심도와 네이버쇼핑 영역 기준 관심도는 서로 다른 모수이니 섞어서 절대비교하지 "
-                "말고, 필요하면 그 차이를 자연스럽게 짚어주십시오.\n"
-                "5. ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량이 아니라는 점을 결론 뒤에 "
-                "자연스럽게 덧붙이십시오.\n"
-                "6. 제공된 데이터에 없는 내용은 추측하거나 지어내지 마십시오.",
-            ),
-            (
-                "human",
-                "분야/키워드: {display_name}\n조회 기간: {start_date} ~ {end_date}\n\n"
-                "[분야 전체 트렌드 원본 데이터 (쇼핑 영역)]\n{category_result}\n\n"
-                "[통합검색 기준 키워드 전체 관심도 원본 데이터]\n{overall_result}\n\n"
-                "[쇼핑 영역 기준 세부 키워드 비교 원본 데이터]\n{keyword_result}\n\n"
-                "[참고: 이미 계산된 키워드별 추세 판정]\n{direction_summary}",
-            ),
-        ])
-        try:
-            chain = prompt | llm
-            response = chain.invoke({
-                "display_name": display_name,
-                "start_date": start_date,
-                "end_date": end_date,
-                "category_result": category_result,
-                "overall_result": overall_result,
-                "keyword_result": keyword_result,
-                "direction_summary": direction_summary,
-            })
-            text = response.content if hasattr(response, "content") else str(response)
-            if text and text.strip():
-                return text.strip()
-        except Exception:
-            pass  # LLM 호출 실패 시 아래 결정론적 폴백으로 진행
+    """신제품 키워드 트렌드 조사 결과를 표·섹션 중심의 마크다운 리포트로 조립한다."""
+    category_series = _parse_series(category_result)
+    overall_series = _parse_series(overall_result)
+    keyword_series = _parse_series(keyword_result)
 
-    sentences = [f"'{display_name}' 관련 시장 트렌드를 {start_date}~{end_date} 기간 데이터로 살펴봤습니다."]
+    direction_lines = [f"- {title}: {_trend_direction(points)}" for title, points in keyword_series.items()]
+    rising = [t for t, p in keyword_series.items() if _trend_direction(p).startswith("상승")]
+    falling = [t for t, p in keyword_series.items() if _trend_direction(p).startswith("하락")]
+    steady = [t for t, p in keyword_series.items() if _trend_direction(p).startswith("보합")]
+
+    lines = [
+        f"# 📊 [{display_name}] 신제품 키워드 트렌드 조사 리포트\n",
+        "### 1. 조회 개요",
+        f"- 분야: {display_name} (category_code={category_code})",
+        f"- 조회 기간: {start_date} ~ {end_date}",
+        "",
+        "### 2. 분야 전체 클릭 트렌드 (네이버쇼핑 영역)",
+    ]
+    lines.extend(_series_table(category_series))
+    lines.append("")
+    lines.append("### 3. 통합검색 기준 키워드 전체 관심도")
+    lines.extend(_series_table(overall_series))
+    lines.append("")
+    lines.append("### 4. 쇼핑 영역 기준 세부 키워드 비교")
+    lines.extend(_series_table(keyword_series))
+    lines.append("")
+    lines.append("### 5. 추세 판정 및 결론")
     if direction_lines:
-        joined = ", ".join(line.lstrip("- ") for line in direction_lines)
-        sentences.append(f"세부 키워드별 추세는 {joined}로 나타났습니다.")
+        lines.extend(direction_lines)
+        lines.append("")
+        if rising:
+            lines.append(f"- **상승 키워드**: {', '.join(rising)}")
+        if falling:
+            lines.append(f"- **하락 키워드**: {', '.join(falling)}")
+        if steady:
+            lines.append(f"- **보합 키워드**: {', '.join(steady)}")
     else:
-        sentences.append("세부 키워드별 추세는 데이터가 부족해 판단하기 어렵습니다.")
-    sentences.append(
-        "이 수치는 조회 구간 내 최댓값을 100으로 환산한 상대값이며 절대 검색량을 의미하지 않고, "
-        "통합검색 기준과 네이버쇼핑 영역 기준은 서로 다른 모수라 직접 비교할 수 없습니다."
-    )
-    return " ".join(sentences)
+        lines.append("데이터 부족으로 추세 판정 불가")
+    lines.append("")
+    lines.append("### 6. 데이터 해석 시 유의사항 (Disclaimers)")
+    disclaimers = [
+        "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량을 의미하지 않습니다.",
+        "통합검색 기준 관심도(3번)와 네이버쇼핑 영역 기준 관심도(2·4번)는 서로 다른 모수이므로 직접 비교하지 않습니다.",
+        "데이터에 없는 키워드나 수치는 지어내지 않았습니다.",
+    ]
+    for idx, d in enumerate(disclaimers, 1):
+        lines.append(f"{idx}. {d}")
+    return "\n".join(lines)
 
 
-def _narrate_target_audience_validation(
-    llm: Optional[Any],
+def _build_target_audience_report(
     display_name: str,
     keyword: str,
+    category_code: str,
     target_gender: str,
     target_age: str,
     start_date: str,
@@ -265,55 +205,38 @@ def _narrate_target_audience_validation(
     keyword_age: str,
     checks: List[str],
 ) -> str:
-    """타겟 오디언스 검증 데이터를 표/숫자 나열이 아니라 결론 중심의 자연어 문단으로 설명한다."""
-    checks_summary = "\n".join(checks) if checks else "판정 불가 (데이터 없음)"
-    target_kr = f"성별={_GENDER_KR.get(target_gender, target_gender)}, 연령대={target_age}대"
-    if llm is not None:
-        prompt = ChatPromptTemplate.from_messages([
-            (
-                "system",
-                "당신은 마케팅 데이터 분석가입니다. 광고주가 설정한 타겟 오디언스가 실제 네이버쇼핑 검색·클릭 "
-                "데이터와 맞는지 검증한 결과를 설명하십시오.\n"
-                "반드시 지켜야 할 규칙:\n"
-                "1. 표, 글머리 기호, 날짜별 숫자 나열 없이 자연스러운 문단(3~5문장)으로만 작성하십시오.\n"
-                "2. 설정한 타겟이 실제 데이터와 맞는지 틀리는지 결론을 가장 먼저 명확히 제시하십시오.\n"
-                "3. 분야 전체 기준과 특정 키워드 기준의 결과가 다르면 그 차이도 짚어주십시오.\n"
-                "4. 근거 수치는 문장 속에 자연스럽게 녹여 인용하십시오 (표 형태 금지).\n"
-                "5. ages는 10세 단위로만 제공되고 ratio는 상대값이라는 점, 일시적 변동만으로 타겟이 틀렸다고 "
-                "단정할 수 없다는 점을 결론 뒤에 자연스럽게 덧붙이십시오.\n"
-                "6. 제공된 데이터에 없는 내용은 추측하지 마십시오.",
-            ),
-            (
-                "human",
-                "분야: {display_name} / 키워드: {keyword}\n설정한 타겟: {target_kr}\n"
-                "조회 기간: {start_date} ~ {end_date}\n\n"
-                "[분야 전체 성별 트렌드 원본 데이터]\n{category_gender}\n\n"
-                "[분야 전체 연령별 트렌드 원본 데이터]\n{category_age}\n\n"
-                "[키워드 성별 트렌드 원본 데이터]\n{keyword_gender}\n\n"
-                "[키워드 연령별 트렌드 원본 데이터]\n{keyword_age}\n\n"
-                "[참고: 이미 계산된 타겟 일치 여부 판정]\n{checks_summary}",
-            ),
-        ])
-        try:
-            chain = prompt | llm
-            response = chain.invoke({
-                "display_name": display_name,
-                "keyword": keyword,
-                "target_kr": target_kr,
-                "start_date": start_date,
-                "end_date": end_date,
-                "category_gender": category_gender,
-                "category_age": category_age,
-                "keyword_gender": keyword_gender,
-                "keyword_age": keyword_age,
-                "checks_summary": checks_summary,
-            })
-            text = response.content if hasattr(response, "content") else str(response)
-            if text and text.strip():
-                return text.strip()
-        except Exception:
-            pass  # LLM 호출 실패 시 아래 결정론적 폴백으로 진행
-
+    """타겟 오디언스 검증 결과를 표·섹션 중심의 마크다운 리포트로 조립한다."""
+    target_kr = f"{_GENDER_KR.get(target_gender, target_gender)} · {target_age}대"
+    lines = [
+        f"# 📊 [{display_name} / {keyword}] 타겟 오디언스 검증 리포트\n",
+        "### 1. 조회 개요",
+        f"- 분야: {display_name} (category_code={category_code})",
+        f"- 검증 키워드: {keyword}",
+        f"- 설정 타겟: {target_kr}",
+        f"- 조회 기간: {start_date} ~ {end_date}",
+        "",
+        "### 2. 분야 전체 기준 실제 관심도",
+        "**성별**",
+    ]
+    lines.extend(_series_table(_parse_series(category_gender), group_header="성별"))
+    lines.append("")
+    lines.append("**연령대**")
+    lines.extend(_series_table(_parse_series(category_age), group_header="연령대"))
+    lines.append("")
+    lines.append(f"### 3. '{keyword}' 키워드 기준 실제 관심도")
+    lines.append("**성별**")
+    lines.extend(_series_table(_parse_series(keyword_gender), group_header="성별"))
+    lines.append("")
+    lines.append("**연령대**")
+    lines.extend(_series_table(_parse_series(keyword_age), group_header="연령대"))
+    lines.append("")
+    lines.append("### 4. 타겟 일치 여부 판정")
+    if checks:
+        lines.extend(checks)
+    else:
+        lines.append("판정 불가 (데이터 없음)")
+    lines.append("")
+    lines.append("### 5. 종합 결론")
     mismatches = [c for c in checks if "⚠️" in c]
     if not checks:
         verdict = "데이터가 부족해 타겟 적합성을 판단하기 어렵습니다."
@@ -323,15 +246,65 @@ def _narrate_target_audience_validation(
         verdict = f"설정하신 타겟({target_kr})은 실제 검색·클릭 데이터와 맞지 않습니다."
     else:
         verdict = f"설정하신 타겟({target_kr})이 일부 기준에서는 맞지만 다른 기준에서는 어긋나는 혼재된 결과입니다."
-    detail = " ".join(c.lstrip("- ") for c in checks) if checks else ""
-    sentences = [verdict]
-    if detail:
-        sentences.append(detail)
-    sentences.append(
-        "ages는 10세 단위로만 제공되고 ratio는 구간 내 상대값이므로, 특정 구간의 일시적 변동만으로 "
-        "타겟이 틀렸다고 단정하기는 어렵습니다."
-    )
-    return " ".join(sentences)
+    lines.append(verdict)
+    lines.append("")
+    lines.append("### 6. 데이터 해석 시 유의사항 (Disclaimers)")
+    disclaimers = [
+        "ages 파라미터는 10세 단위로만 제공되어 그 이상의 세분화(예: 24세 단일 연령)는 불가능합니다.",
+        "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대적인 검색량이나 구매자 수가 아닙니다.",
+        "특정 구간의 일시적 변동만으로 타겟이 틀렸다고 성급히 단정하지 않습니다.",
+    ]
+    for idx, d in enumerate(disclaimers, 1):
+        lines.append(f"{idx}. {d}")
+    return "\n".join(lines)
+
+
+def _build_keyword_segmentation_report(
+    keyword: str,
+    category_code: str,
+    start_date: str,
+    end_date: str,
+    gender_result: str,
+    age_result: str,
+    gender_top: Optional[Tuple[str, float]],
+    age_top: Optional[Tuple[str, float]],
+) -> str:
+    """키워드 성별·연령 타겟팅 세분화 결과를 표·섹션 중심의 마크다운 리포트로 조립한다."""
+    lines = [
+        f"# 📊 '{keyword}' 검색자 성별·연령대 분포 리포트\n",
+        "### 1. 조회 개요",
+        f"- 키워드: {keyword} (category_code={category_code})",
+        f"- 조회 기간: {start_date} ~ {end_date}",
+        "",
+        "### 2. 성별 분포",
+    ]
+    lines.extend(_series_table(_parse_series(gender_result), group_header="성별"))
+    if gender_top:
+        gender_kr = _GENDER_KR.get(gender_top[0], gender_top[0])
+        lines.append(f"\n최고 관심 세그먼트: **{gender_kr}** (ratio {gender_top[1]})")
+    lines.append("")
+    lines.append("### 3. 연령대별 분포")
+    lines.extend(_series_table(_parse_series(age_result), group_header="연령대"))
+    if age_top:
+        lines.append(f"\n최고 관심 세그먼트: **{age_top[0]}대** (ratio {age_top[1]})")
+    lines.append("")
+    lines.append("### 4. 타겟팅 제안")
+    if gender_top or age_top:
+        gender_part = _GENDER_KR.get(gender_top[0], gender_top[0]) if gender_top else "판단 불가"
+        age_part = f"{age_top[0]}대" if age_top else "판단 불가"
+        lines.append(f"- 광고 타겟팅은 **{gender_part}** · **{age_part}**를 중심으로 설정하는 것이 데이터상 가장 부합합니다.")
+    else:
+        lines.append("- 데이터가 부족해 타겟팅 제안을 하기 어렵습니다.")
+    lines.append("- 관심도가 낮게 나온 세그먼트라도 광고 타겟에서 완전히 배제할 근거로 보기는 어렵습니다.")
+    lines.append("")
+    lines.append("### 5. 데이터 해석 시 유의사항 (Disclaimers)")
+    disclaimers = [
+        "ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대적인 검색량이나 구매자 수가 아닙니다.",
+        "성별과 연령별 분포는 서로 구분되며, 둘을 임의로 결합해 새로운 수치를 만들지 않습니다.",
+    ]
+    for idx, d in enumerate(disclaimers, 1):
+        lines.append(f"{idx}. {d}")
+    return "\n".join(lines)
 
 
 def _default_start() -> str:
@@ -446,21 +419,17 @@ class NewProductKeywordTrendScenario(BaseScenario):
             start_date=params.start_date, end_date=params.end_date,
         )
 
-        keyword_series = _parse_series(keyword_result)
-        direction_lines = [f"- {title}: {_trend_direction(points)}" for title, points in keyword_series.items()]
-
         note_block = f"{code_note}\n\n" if code_note else ""
-        summary = _narrate_new_product_trend(
-            llm=context.get("llm") if context else None,
+        report = _build_new_product_trend_report(
             display_name=display_name,
+            category_code=category_code,
             start_date=params.start_date,
             end_date=params.end_date,
             category_result=category_result,
             overall_result=overall_result,
             keyword_result=keyword_result,
-            direction_lines=direction_lines,
         )
-        return f"{note_block}{summary}"
+        return f"{note_block}{report}"
 
 
 class TargetAudienceValidationParams(BaseModel):
@@ -561,10 +530,10 @@ class TargetAudienceValidationScenario(BaseScenario):
                 checks.append(f"- {label}: ⚠️ 실제 최고 관심 세그먼트는 '{top[0]}'(ratio {top[1]})이나, 설정한 타겟은 '{target}'이라 불일치")
 
         note_block = f"{code_note}\n\n" if code_note else ""
-        summary = _narrate_target_audience_validation(
-            llm=context.get("llm") if context else None,
+        report = _build_target_audience_report(
             display_name=display_name,
             keyword=params.keyword,
+            category_code=category_code,
             target_gender=params.target_gender,
             target_age=params.target_age,
             start_date=params.start_date,
@@ -575,7 +544,7 @@ class TargetAudienceValidationScenario(BaseScenario):
             keyword_age=keyword_age,
             checks=checks,
         )
-        return f"{note_block}{summary}"
+        return f"{note_block}{report}"
 
 
 class KeywordAudienceSegmentationParams(BaseModel):
@@ -647,9 +616,9 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
                 age_top = candidate
 
         note_block = f"{code_note}\n\n" if code_note else ""
-        summary = _narrate_keyword_segmentation(
-            llm=context.get("llm") if context else None,
+        report = _build_keyword_segmentation_report(
             keyword=params.keyword,
+            category_code=category_code,
             start_date=params.start_date,
             end_date=params.end_date,
             gender_result=gender_result,
@@ -657,4 +626,4 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
             gender_top=gender_top,
             age_top=age_top,
         )
-        return f"{note_block}{summary}"
+        return f"{note_block}{report}"

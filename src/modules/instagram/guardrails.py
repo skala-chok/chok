@@ -33,6 +33,19 @@ class InstagramGuardrail(BaseGuardrail):
                     passed=False,
                     error_message="해시태그 고유 ID(hashtag_id)가 제공되지 않았습니다.",
                 )
+            if tool_name == "get_hashtag_recent_media" and "hours_range" in args and args["hours_range"] is not None:
+                try:
+                    hr = int(args["hours_range"])
+                    if hr <= 0:
+                        return GuardrailResult(
+                            passed=False,
+                            error_message="시간 범위(hours_range)는 1 이상의 정수여야 합니다.",
+                        )
+                except (ValueError, TypeError):
+                    return GuardrailResult(
+                        passed=False,
+                        error_message="시간 범위(hours_range)는 유효한 숫자여야 합니다.",
+                    )
 
         elif tool_name == "get_competitor_profile":
             username = str(args.get("username", "")).strip().lstrip("@")

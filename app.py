@@ -761,15 +761,11 @@ _GRID_GRAY = "#BFBFBF"
 _TREND_TITLE_RE = re.compile(r"^\[(.+?)\]$")
 _TREND_POINT_RE = re.compile(r"^\s*-\s*([\d-]+)(?:\s*\(([^)]+)\))?:\s*([\d.]+)\s*$")
 
-# naver_trend_analysis 시나리오의 각 execute()가 내부적으로 호출하는 도구 이름 -> 차트 제목.
-# 시나리오 execute()의 반환값(사용자에게 보이는 문자열)은 팀 컨벤션상 순수 자연어 요약이어야 해서
-# (하네스 테스트가 반환값의 완전 일치/무마크업을 검증함) 차트용 원본 수치를 절대 섞어 넣을 수 없다.
-# 대신 scenario.py의 LAST_RUN_TOOL_RESULTS(사이드 채널)에 실행 직후 남는 원본 도구 결과를 읽어
-# UI 레이어에서만 차트로 재구성한다.
+# naver_trend_analysis 도구 이름 -> 차트 제목 (원본 수치는 scenario.LAST_RUN_TOOL_RESULTS에서 읽음).
 _NAVER_TREND_TOOL_LABELS = {
     "get_shopping_category_trend": "분야 전체 트렌드 (쇼핑 영역)",
     "get_shopping_trends": "통합검색 기준 키워드 전체 관심도",
-    "get_shopping_keyword_trend": "쇼핑 영역 기준 세부 키워드 비교",
+    # get_shopping_keyword_trend(쇼핑 영역 세부 키워드 비교)는 리포트 표로만 보여주고 차트에서는 제외
     "get_shopping_category_gender_trend": "분야 전체 성별 트렌드",
     "get_shopping_category_age_trend": "분야 전체 연령별 트렌드",
     "get_shopping_keyword_gender_trend": "키워드 성별 트렌드",
@@ -1074,8 +1070,7 @@ with tab_agent:
                                 callbacks=[cb_handler],
                                 on_status=log_status,
                             )
-                            # naver_trend_analysis 시나리오가 실행됐다면, 반환 문자열(순수 자연어
-                            # 요약)과는 별도로 사이드 채널에 남은 원본 수치를 즉시 스냅샷해 차트에 사용한다.
+                            # 다음 시나리오 실행이 초기화하기 전에 원본 도구 결과를 복사해 둔다.
                             chart_tool_results = dict(naver_trend_scenario.LAST_RUN_TOOL_RESULTS)
                             status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
                             real_msg = {

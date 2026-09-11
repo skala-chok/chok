@@ -1,223 +1,75 @@
-# ==============================================================================
-# 🟣 [Step 6 - 보라점] 단위 테스트 & 품질 검증 계층
-# • 역할: YouTube Data API 검색 및 자막 추출을 Mocking하여 1초 내에 통과하는 단위 테스트를 작성합니다.
-# • 실행 명령: pytest tests/modules/test_yt_search.py -v
-# ==============================================================================
+from unittest.mock import MagicMock, patch
 
-import pytest
-from unittest.mock import patch, MagicMock
-from src.modules.yt_search.module import YouTubeSearchModule
-from src.modules.yt_search.tools import (
-    find_youtube_channel, get_channel_videos, get_competitor_recent_uploads,
-    get_video_transcript, search_paid_promotion_videos, search_youtube_videos,
-)
-from src.modules.yt_search.guardrails import YouTubeSearchGuardrail
-from src.modules.yt_search.context import YouTubeSearchContextProvider
+import requests
+
 from src.modules.yt_search.client import YouTubeSearchClient
+from src.modules.yt_search.guardrails import YouTubeSearchGuardrail
+from src.modules.yt_search.module import YouTubeSearchModule
+from src.modules.yt_search.tools import _video_items
 
 
-def test_yt_search_module_metadata():
-    mod = YouTubeSearchModule()
-    assert mod.name == "yt_search"
-    assert "YouTube" in mod.description
-    tools = mod.get_tools()
-    assert len(tools) == 6
-    tool_names = [t.name for t in tools]
-    assert "search_youtube_videos" in tool_names
-    assert "get_video_transcript" in tool_names
-    assert {"find_youtube_channel", "get_channel_videos", "get_competitor_recent_uploads", "search_paid_promotion_videos"} <= set(tool_names)
-
-    guardrails = mod.get_guardrails()
-    assert len(guardrails) == 1
-    assert isinstance(guardrails[0], YouTubeSearchGuardrail)
-
-    ctx = mod.get_context_provider()
-    assert isinstance(ctx, YouTubeSearchContextProvider)
+def test_module_registers_only_requested_tools():
+    module = YouTubeSearchModule()
+    assert [tool.name for tool in module.get_tools()] == [
+        "find_youtube_channel",
+        "get_channel_details",
+        "get_channel_videos",
+        "get_competitor_recent_uploads",
+    ]
 
 
-def test_yt_search_module_is_enabled(monkeypatch):
-    mod = YouTubeSearchModule()
-
-    monkeypatch.setattr("src.modules.yt_search.module.settings.YOUTUBE_API_KEY", "dummy_key")
-    assert mod.is_enabled() is True
-
-    monkeypatch.setattr("src.modules.yt_search.module.settings.YOUTUBE_API_KEY", None)
-    assert mod.is_enabled() is False
-
-    monkeypatch.setattr("src.modules.yt_search.module.settings.YOUTUBE_API_KEY", "")
-    assert mod.is_enabled() is False
-
-
-def test_yt_search_context_provider():
-    provider = YouTubeSearchContextProvider()
-    snippet = provider.get_system_prompt_snippet()
-    assert "search_youtube_videos" in snippet
-    assert "get_video_transcript" in snippet
-    assert provider.get_dynamic_context("some query") is None
-
-
-def test_yt_search_guardrail_input_validation():
-    guard = YouTubeSearchGuardrail()
-
-    # Empty query rejection
-    res_empty = guard.validate_input("")
-    assert res_empty.passed is False
-    assert "검색 쿼리가 비어 있습니다" in res_empty.error_message
-
-    res_whitespace = guard.validate_input("   ")
-    assert res_whitespace.passed is False
-
-    # Valid query
-    res_valid = guard.validate_input("파이썬 튜토리얼")
-    assert res_valid.passed is True
-
-
-def test_yt_search_guardrail_tool_args_validation():
-    guard = YouTubeSearchGuardrail()
-
-    # max_results exceeds 10
-    res = guard.validate_tool_args("search_youtube_videos", {"max_results": 20})
-    assert res.passed is False
-    assert "최대 10개" in res.error_message
-
-    # max_results less than 1
-    res_zero = guard.validate_tool_args("search_youtube_videos", {"max_results": 0})
-    assert res_zero.passed is False
-    assert "최소 1개" in res_zero.error_message
-
-    # max_results valid
-    assert guard.validate_tool_args("search_youtube_videos", {"max_results": 5}).passed is True
-    assert guard.validate_tool_args("search_youtube_videos", {}).passed is True
-
-    # max_results None check (defaults to 5 without TypeError)
-    res_none = guard.validate_tool_args("search_youtube_videos", {"max_results": None})
-    assert res_none.passed is True
-
-    # max_results non-integer rejection
-    res_invalid = guard.validate_tool_args("search_youtube_videos", {"max_results": "abc"})
-    assert res_invalid.passed is False
-    assert "정수형이어야 합니다" in res_invalid.error_message
-
-    # video_id validation for get_video_transcript
-    res_invalid_vid = guard.validate_tool_args("get_video_transcript", {"video_id": ""})
-    assert res_invalid_vid.passed is False
-    assert "유효하지 않은 YouTube video_id" in res_invalid_vid.error_message
-
-    res_short_vid = guard.validate_tool_args("get_video_transcript", {"video_id": "ab"})
-    assert res_short_vid.passed is False
-
-    res_valid_vid = guard.validate_tool_args("get_video_transcript", {"video_id": "dQw4w9WgXcQ"})
-    assert res_valid_vid.passed is True
-
-    # Other tools pass
-    assert guard.validate_tool_args("other_tool", {}).passed is True
-
-
-def test_yt_search_guardrail_sanitize_output():
-    guard = YouTubeSearchGuardrail()
-    output = "Some raw output"
-    assert guard.sanitize_output("search_youtube_videos", output) == output
+def test_guardrail_validates_channel_and_date_arguments():
+    guardrail = YouTubeSearchGuardrail()
+    assert not guardrail.validate_tool_args("get_channel_details", {}).passed
+    assert not guardrail.validate_tool_args(
+        "get_channel_videos", {"channel_id": "UC1", "published_after": "bad"}
+    ).passed
+    assert guardrail.validate_tool_args(
+        "get_channel_videos", {"channel_id": "UC1", "published_after": "2026-01-01T00:00:00Z"}
+    ).passed
 
 
 @patch("src.modules.yt_search.client.requests.get")
-def test_search_youtube_videos_mock(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {
-        "items": [
-            {
-                "id": {"videoId": "test_vid_1"},
-                "snippet": {
-                    "title": "테스트 유튜브 영상",
-                    "description": "영상 설명입니다.",
-                    "channelTitle": "테스트 채널"
-                }
-            }
-        ]
-    }
-    result = search_youtube_videos.invoke({"query": "파이썬 강의", "max_results": 1})
-    assert "test_vid_1" in result
-    assert "테스트 유튜브 영상" in result
-    assert "테스트 채널" in result
-    assert "영상 설명입니다." in result
-
-
-@patch("src.modules.yt_search.client.requests.get")
-def test_search_youtube_videos_no_items(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {"items": []}
-    result = search_youtube_videos.invoke({"query": "결과없는검색어", "max_results": 5})
-    assert "유튜브 검색 결과가 없습니다" in result
-
-
-@patch("src.modules.yt_search.client.requests.get")
-def test_search_youtube_videos_error_handling(mock_get):
-    mock_get.side_effect = RuntimeError("Network failure")
-    result = search_youtube_videos.invoke({"query": "파이썬 강의", "max_results": 1})
-    assert "유튜브 검색 중 오류 발생: Network failure" in result
-
-
-def test_get_video_transcript_mock():
-    result = get_video_transcript.invoke({"video_id": "test_vid_123"})
-    assert "test_vid_123" in result
-    assert "자막 추출 완료" in result
-
-
-def test_get_video_transcript_error_handling():
-    with patch("src.modules.yt_search.tools.client.get_transcript", side_effect=Exception("Transcript unavailable")):
-        result = get_video_transcript.invoke({"video_id": "invalid_id"})
-        assert "자막 추출 실패: Transcript unavailable" in result
-
-
-@patch("src.modules.yt_search.client.requests.get")
-def test_client_search_videos_params(mock_get, monkeypatch):
-    monkeypatch.setattr("src.modules.yt_search.client.settings.YOUTUBE_API_KEY", "my_api_key")
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"items": []}
-    mock_get.return_value = mock_resp
-
-    client = YouTubeSearchClient()
-    res = client.search_videos("테스트", max_results=3)
-
-    mock_get.assert_called_once_with(
-        "https://www.googleapis.com/youtube/v3/search",
-        params={
-            "part": "snippet",
-            "q": "테스트",
-            "type": "video",
-            "maxResults": 3,
-            "key": "my_api_key",
-        },
-        timeout=5,
-    )
-    assert res == {"items": []}
-
-
-@patch("src.modules.yt_search.client.requests.get")
-def test_search_client_failure_returns_fallback(mock_get):
-    import requests
-
+def test_client_search_failure_returns_channel_contract_fallback(mock_get):
     mock_get.side_effect = requests.exceptions.ConnectionError("offline")
-    result = YouTubeSearchClient().search_videos("phone")
-    assert "items" in result
+    result = YouTubeSearchClient().find_channels("A사")
+    assert result["items"][0]["id"]["channelId"] == "fallback_channel"
     assert "[Fallback Mock]" in result["items"][0]["snippet"]["title"]
 
 
 @patch("src.modules.yt_search.client.requests.get")
-def test_new_search_tools_use_required_filters(mock_get):
-    mock_get.return_value.json.return_value = {"items": []}
-    search_paid_promotion_videos.invoke({"query": "무선이어폰", "start_date": "2026-01-01"})
-    assert mock_get.call_args.kwargs["params"]["videoPaidProductPlacement"] == "true"
-    get_channel_videos.invoke({"channel_id": "UC1", "start_date": "2026-01-01", "end_date": "2026-02-01"})
-    assert mock_get.call_args.kwargs["params"]["channelId"] == "UC1"
-    find_youtube_channel.invoke({"company": "A사"})
-    get_competitor_recent_uploads.invoke({"channel_id": "UC1", "start_date": "2026-01-01"})
+def test_recent_upload_failure_returns_playlist_contract_fallback(mock_get):
+    mock_get.side_effect = requests.exceptions.Timeout("offline")
+    result = YouTubeSearchClient().get_recent_uploads("UC1")
+    assert result["items"][0]["contentDetails"]["videoId"] == "fallback_video"
+    assert "[Fallback Mock]" in result["items"][0]["snippet"]["title"]
 
 
-def test_yt_search_registry_discovery():
-    from src.core.registry import ModuleRegistry
-    registry = ModuleRegistry()
-    registry.discover_modules("src.modules")
-    mod = registry.get_module("yt_search")
-    assert mod is not None
-    assert isinstance(mod, YouTubeSearchModule)
+@patch("src.modules.yt_search.client.requests.get")
+def test_channel_details_uses_mocked_http(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"items": []}
+    mock_get.return_value = response
+    assert YouTubeSearchClient().get_channel_details("UC1") == {"items": []}
+
+
+def test_video_normalizer_ignores_malformed_items():
+    assert _video_items({"items": ["bad", {"contentDetails": {"videoId": "v1"}}]}) == [
+        {
+            "video_id": "v1", "title": "", "description": "", "channel_name": "",
+            "published_at": "", "url": "https://www.youtube.com/watch?v=v1",
+        }
+    ]
+
+
+def test_video_normalizer_accepts_playlist_item_string_id():
+    assert _video_items({"items": [{"id": "playlist-item", "contentDetails": {"videoId": "v1"}}]})[0]["video_id"] == "v1"
+
+
+@patch("src.modules.yt_search.client.requests.get")
+def test_client_expands_date_only_published_after(mock_get):
+    response = MagicMock()
+    response.json.return_value = {"items": []}
+    mock_get.return_value = response
+    YouTubeSearchClient().search_videos("러닝화", channel_id="UC1", published_after="2026-01-01")
+    assert mock_get.call_args.kwargs["params"]["publishedAfter"] == "2026-01-01T00:00:00Z"

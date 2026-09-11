@@ -1,6 +1,4 @@
-from unittest.mock import MagicMock, patch
-
-from langchain_core.messages import AIMessage
+from unittest.mock import MagicMock
 
 from src.core.scenario_registry import ScenarioRegistry
 from src.scenarios.naver_trend_analysis.scenario import (
@@ -41,15 +39,19 @@ def test_new_product_keyword_trend_calls_tools_and_detects_direction():
         category_name="패션의류", category_code="50000000",
         keywords="니트,코트", start_date="2026-01-01", end_date="2026-03-01",
     )
-    result = scenario.execute(params, tools)  # context 없음 -> 문장형 폴백 경로
+    result = scenario.execute(params, tools)
 
     assert lookup.invoke.call_count == 1
     assert category.invoke.call_count == overall.invoke.call_count == keyword.invoke.call_count == 1
-    # 표/글머리 기호가 아니라 자연어 문장으로 결론이 나와야 한다.
-    assert "#### " not in result
+    # 보고서 형식(표/섹션)으로 구성되어야 한다.
+    assert "### 2. 분야 전체 클릭 트렌드" in result
+    assert "### 5. 추세 판정 및 결론" in result
+    assert "| 니트 | 2026-01-01 | 90.0 |" in result
     assert "니트: 하락 (90.0 → 40.0)" in result
     assert "코트: 상승 (30.0 → 90.0)" in result
-    assert "절대 검색량을 의미하지 않고" in result
+    assert "**상승 키워드**: 코트" in result
+    assert "**하락 키워드**: 니트" in result
+    assert "절대 검색량을 의미하지 않습니다." in result
     # 라우터가 준 코드가 실제 후보와 일치하므로 정정 안내는 없어야 한다.
     assert "자동 정정" not in result
 
@@ -76,7 +78,6 @@ def test_new_product_keyword_trend_corrects_hallucinated_code():
     assert "자동 정정" in result
     assert "50000167" in result and "50003854" in result
     # 실제 Tool 호출에는 정정된 코드가 쓰여야 한다.
-    _, kwargs = category.invoke.call_args
     assert "50003854" in category.invoke.call_args[0][0]["categories"]
     assert keyword.invoke.call_args[0][0]["category_code"] == "50003854"
 
@@ -121,14 +122,14 @@ def test_target_audience_validation_falls_back_to_keyword_when_category_name_emp
         category_name="", category_code="", keyword="러닝화",
         target_gender="m", target_age="40", start_date="2026-06-11", end_date="2026-09-11",
     )
-    result = scenario.execute(params, tools)  # context 없음 -> 문장형 폴백 경로
+    result = scenario.execute(params, tools)
 
     # find_naver_category_code가 빈 category_name이 아니라 keyword("러닝화")로 호출돼야 한다.
     lookup.invoke.assert_called_once_with({"keyword": "러닝화"})
     assert "가드레일" not in result
-    assert "#### " not in result
     # code_note 안내문에 자동 조회된 코드가 언급돼야 한다 (category_name이 비어 keyword로 대체 조회됨).
     assert "50003854" in result
+    assert "### 4. 타겟 일치 여부 판정" in result
     assert "일치" in result
 
 
@@ -201,15 +202,18 @@ def test_keyword_audience_segmentation_calls_tools_and_is_discovered():
     params = KeywordAudienceSegmentationParams(
         category_code="50000000", keyword="니트", start_date="2026-01-01", end_date="2026-03-01",
     )
-    result = scenario.execute(params, tools)  # context 없음 -> 문장형 폴백 경로
+    result = scenario.execute(params, tools)
 
     assert lookup.invoke.call_count == 1
     assert gender.invoke.call_count == age.invoke.call_count == 1
-    # 표/글머리 기호가 아니라 자연어 문장으로 결론이 먼저 나와야 한다.
-    assert "#### " not in result
-    assert "- 2026-01-01" not in result
-    assert "여성의 관심도가 가장 높게 나타나" in result
-    assert "40대의 관심도가 가장 높았습니다" in result
+    # 보고서 형식(표 + 결론 섹션)으로 구성되어야 한다.
+    assert "### 2. 성별 분포" in result
+    assert "| 니트 | 2026-01-01 | 여성 | 100.0 |" in result
+    assert "### 3. 연령대별 분포" in result
+    assert "| 니트 | 2026-01-01 | 40대 | 100.0 |" in result
+    assert "최고 관심 세그먼트: **여성**" in result
+    assert "최고 관심 세그먼트: **40대**" in result
+    assert "광고 타겟팅은 **여성** · **40대**를 중심으로" in result
 
     registry = ScenarioRegistry()
     registry.discover_scenarios()
@@ -218,32 +222,6 @@ def test_keyword_audience_segmentation_calls_tools_and_is_discovered():
         "naver_target_audience_validation",
         "naver_keyword_audience_segmentation",
     } <= set(item.name for item in registry.get_all_scenarios())
-
-
-def test_keyword_audience_segmentation_uses_llm_when_provided_in_context():
-    """context에 llm이 주어지면 표/숫자 나열이 아니라 LLM이 생성한 문단을 그대로 반환해야 한다."""
-    scenario = KeywordAudienceSegmentationScenario()
-    gender = _tool("[니트]\n  - 2026-01-01 (f): 100\n  - 2026-01-01 (m): 20")
-    age = _tool("[니트]\n  - 2026-01-01 (40): 100\n  - 2026-01-01 (20): 10")
-    tools = {
-        "find_naver_category_code": _lookup_tool("50000000"),
-        "get_shopping_keyword_gender_trend": gender,
-        "get_shopping_keyword_age_trend": age,
-    }
-    params = KeywordAudienceSegmentationParams(
-        category_code="50000000", keyword="니트", start_date="2026-01-01", end_date="2026-03-01",
-    )
-
-    mock_llm = MagicMock()
-    with patch("src.scenarios.naver_trend_analysis.scenario.ChatPromptTemplate.from_messages") as mock_prompt_cls:
-        mock_chain = MagicMock()
-        mock_chain.invoke.return_value = AIMessage(content="니트는 여성 40대 중심으로 타겟팅하는 것이 좋습니다.")
-        mock_prompt_cls.return_value.__or__.return_value = mock_chain
-
-        result = scenario.execute(params, tools, context={"llm": mock_llm})
-
-    assert result.strip() == "니트는 여성 40대 중심으로 타겟팅하는 것이 좋습니다."
-    mock_chain.invoke.assert_called_once()
 
 
 def test_category_code_resolution_falls_back_when_lookup_has_no_candidates():
