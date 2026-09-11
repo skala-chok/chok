@@ -4,11 +4,24 @@
 # ➔ 다음 단계: 🟡 [Step 3] tools.py 로 이동하여 쇼핑 도구를 정의하세요.
 # ==============================================================================
 
-import html
 import re
 from typing import Any, Dict
 
 from src.core.base import BaseGuardrail, GuardrailResult
+from src.core.guardrails import sanitize_text
+
+
+# ==============================================================================
+# 🎯 [코드 참고사항: 네이버 쇼핑 가드레일 (Guardrail-by-Design)]
+# 1. 3단계 방어선 구현 (BaseGuardrail 상속):
+#    - validate_input: 빈 쿼리 사전 차단
+#    - validate_tool_args: API 호출 전 파라미터 규격(정규식, 경계값, 허용치) 엄격 검증
+#    - sanitize_output: API 응답 내 HTML 태그, 악성 문자열, PII 사후 정제
+# 2. 엔드포인트별 API 스펙 경계값 방어:
+#    - 검색어 트렌드(search-trend): 2016-01-01 이후 데이터만 제공
+#    - 쇼핑 인사이트(shopping-insight): 2017-08-01 이후 데이터만 제공
+#    - 잘못된 날짜 요청 시 400 Bad Request가 발생하기 전에 가드레일에서 즉각 방어
+# ==============================================================================
 
 
 class NaverShoppingGuardrail(BaseGuardrail):
@@ -22,6 +35,7 @@ class NaverShoppingGuardrail(BaseGuardrail):
     )
 
     def validate_input(self, query: str) -> GuardrailResult:
+        """[사전 방어 1단계] 사용자 입력 질의 공백/누락 검증."""
         if not query or not query.strip():
             return GuardrailResult(passed=False, error_message="검색 쿼리가 비어 있습니다.")
         return GuardrailResult(passed=True)
@@ -32,17 +46,22 @@ class NaverShoppingGuardrail(BaseGuardrail):
     SHOPPING_INSIGHT_MIN_DATE = "2017-08-01"
 
     def validate_tool_args(self, tool_name: str, args: Dict[str, Any]) -> GuardrailResult:
+        """[사전 방어 2단계] 도구 호출 파라미터의 정규식 포맷, 날짜 역전, 개수 제한 검증."""
         if tool_name == "get_shopping_trends" or tool_name in self.SHOPPING_INSIGHT_TOOLS:
+            # 1. 날짜 포맷 YYYY-MM-DD 정규식 검증
             date_regex = r"^\d{4}-\d{2}-\d{2}$"
             start_d = str(args.get("start_date", ""))
             end_d = str(args.get("end_date", ""))
             if not re.match(date_regex, start_d) or not re.match(date_regex, end_d):
                 return GuardrailResult(passed=False, error_message="날짜는 YYYY-MM-DD 형식이어야 합니다.")
+            # 2. 엔드포인트별 최소 시작일 경계값 검증
             min_date = self.SEARCH_TREND_MIN_DATE if tool_name == "get_shopping_trends" else self.SHOPPING_INSIGHT_MIN_DATE
             if start_d < min_date:
                 return GuardrailResult(passed=False, error_message=f"start_date는 {min_date} 이후여야 합니다 (API 제공 범위).")
+            # 3. 시작일 > 종료일 역전 검증
             if start_d > end_d:
                 return GuardrailResult(passed=False, error_message="start_date는 end_date보다 이전이거나 같아야 합니다.")
+            # 4. 단위 열거형(Enum) 화이트리스트 검증
             time_unit = args.get("time_unit")
             if time_unit is not None and time_unit not in ("date", "week", "month"):
                 return GuardrailResult(passed=False, error_message="time_unit은 'date', 'week', 'month'만 가능합니다.")
@@ -76,14 +95,11 @@ class NaverShoppingGuardrail(BaseGuardrail):
         if tool_name in ("get_shopping_keyword_gender_trend", "get_shopping_keyword_age_trend"):
             if not str(args.get("keyword", "")).strip():
                 return GuardrailResult(passed=False, error_message="keyword가 비어 있습니다.")
+        if tool_name == "find_naver_category_code":
+            if not str(args.get("keyword", "")).strip():
+                return GuardrailResult(passed=False, error_message="keyword가 비어 있습니다.")
         return GuardrailResult(passed=True)
 
     def sanitize_output(self, tool_name: str, output: Any) -> Any:
-        if isinstance(output, str):
-            clean = re.sub(r"<.*?>", "", output)
-            clean = html.unescape(clean)
-            # Mask email addresses / Korean phone numbers (handoff/03_guidelines.md 2절 사후 출력 정제 요건)
-            clean = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[EMAIL_MASKED]", clean)
-            clean = re.sub(r"01[016789]-?\d{3,4}-?\d{4}", "[PHONE_MASKED]", clean)
-            return clean
-        return output
+        """[사후 방어 3단계] 도구 실행 결과 문자열 내 HTML 태그 및 개인정보 정제."""
+        return sanitize_text(output) if isinstance(output, str) else output

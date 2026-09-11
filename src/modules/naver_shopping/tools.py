@@ -8,9 +8,36 @@ from typing import Any, Dict
 
 from langchain_core.tools import tool
 
-from .client import NaverShoppingClient
+from .client import NaverCategoryLookup, NaverShoppingClient
 
 client = NaverShoppingClient()
+
+
+@tool
+def find_naver_category_code(keyword: str) -> str:
+    """네이버쇼핑 상품/분야 키워드로 category_code 후보를 찾습니다.
+
+    다른 쇼핑 인사이트 Tool(get_shopping_category_trend 등)은 category_code가 필요한데,
+    사용자가 코드를 모를 때 이 Tool로 먼저 키워드 검색을 해서 후보를 얻으십시오.
+    예: "러닝화 트렌드 알려줘" 요청 시 category_code 없이 이 Tool을 "러닝화"로 먼저 호출합니다.
+
+    Args:
+        keyword: 검색할 상품/분야 키워드 (예: "러닝화", "니트").
+
+    Returns:
+        후보 목록(코드 + 전체 분류 경로) 요약 문자열. 후보가 여러 개면(예: 남성용/여성용처럼
+        성별이 나뉜 경우) 전부 나열하니 상황에 맞는 것을 고르거나 필요하면 각각 조회하십시오.
+        후보가 없으면 그 사실을 그대로 반환하므로, 이 경우 코드를 추측하지 말고 사용자에게
+        정확한 분야명이나 category_code를 직접 물어보십시오.
+    """
+    try:
+        candidates = NaverCategoryLookup.search(keyword)
+        if not candidates:
+            return f"'{keyword}'와 일치하는 네이버쇼핑 카테고리를 찾지 못했습니다. 다른 키워드로 다시 찾거나 사용자에게 정확한 분야명/category_code를 물어보세요."
+        lines = [f"- category_code={c['code']} | {c['path']}" for c in candidates]
+        return f"'{keyword}' 검색 결과 카테고리 후보 {len(candidates)}건:\n" + "\n".join(lines)
+    except Exception as e:
+        return f"카테고리 코드 검색 실패: {str(e)}"
 
 
 @tool
@@ -40,32 +67,12 @@ def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
         return f"트렌드 분석 조회 실패: {str(e)}"
 
 
-# ==============================================================================
-# [Tool 추가 영역]
-# 새로운 도구(Tool)를 정의하려면 이 영역 아래에 @tool 데코레이터를 사용하여 함수를 추가하시면 됩니다.
-# 작성 예시:
-# @tool
-# def my_new_tool(param: str) -> str:
-#     """도구에 대한 상세 설명을 작성하세요."""
-#     # 로직 구현
-#     return "결과 문자열"
-#
-# ※ 주의: 새로 작성한 tool은 module.py의 get_tools() 반환 리스트에도 반드시 등록해 주세요.
-# ==============================================================================
-
-
 def _parse_pairs(raw: str) -> Dict[str, str]:
     """'이름:값,이름:값' 형식 문자열을 {이름: 값} 딕셔너리로 변환."""
-    pairs = {}
-    for chunk in raw.split(","):
-        chunk = chunk.strip()
-        if not chunk:
-            continue
-        name, _, value = chunk.partition(":")
-        if not value:
-            raise ValueError(f"'{chunk}'는 '이름:값' 형식이 아닙니다.")
-        pairs[name.strip()] = value.strip()
-    return pairs
+    chunks = [c.strip() for c in raw.split(",") if c.strip()]
+    if any(":" not in c or not c.split(":", 1)[1].strip() for c in chunks):
+        raise ValueError("올바른 '이름:값' 형식이 아닙니다.")
+    return {k.strip(): v.strip() for k, v in (c.split(":", 1) for c in chunks)}
 
 
 def _format_trend_results(data: Dict[str, Any]) -> str:

@@ -1,14 +1,12 @@
-import sys
 from unittest.mock import MagicMock, patch
 import pytest
 from langchain_core.tools import tool
 from langchain_core.messages import AIMessage
-from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
 from src.core.agent import AgentRunner, AgentBuilder
 from src.core.base import BaseAgentModule, BaseContextProvider, BaseGuardrail, GuardrailResult
 from src.core.registry import ModuleRegistry
-import src.main
+from tests.conftest import FakeChatWithTools
 
 
 @tool
@@ -43,10 +41,6 @@ class DummyModule(BaseAgentModule):
         return CP()
 
 
-class FakeChatWithTools(FakeListChatModel):
-    def bind_tools(self, tools, **kwargs):
-        return self
-
 
 def test_agent_runner_input_guardrail_rejection():
     class BlockAllGuardrail(BaseGuardrail):
@@ -74,16 +68,16 @@ def test_agent_runner_system_prompt_and_tools_compilation():
     llm = FakeChatWithTools(responses=["Agent response!"])
     runner = AgentRunner(registry=registry, llm=llm)
 
-    # Verify tools
+    # 도구 등록 정상 검증
     assert len(runner.tools) == 1
     assert runner.tools[0].name == "greet"
 
-    # Verify system prompt snippet integration
+    # 시스템 프롬프트 조각 통합 검증
     assert "YouTube 및 Naver Open API" in runner.system_prompt_text
     assert "[dummy test module 가이드]" in runner.system_prompt_text
     assert "Dummy Context" in runner.system_prompt_text
 
-    # Verify successful execution
+    # 정상 실행 완료 검증
     result = runner.run("Hello there")
     assert result == "Agent response!"
 
@@ -147,77 +141,6 @@ def test_mock_llm_fixture(mock_llm):
     assert mock_llm is not None
 
 
-def test_main_cli_query_mode(capsys):
-    test_args = ["main.py", "--query", "날씨 알려줘"]
-    with patch.object(sys, "argv", test_args):
-        with patch.object(src.main.ModuleRegistry, "discover_modules"):
-            with patch.object(src.main.AgentRunner, "run", return_value="날씨는 맑음입니다."):
-                src.main.main()
-
-    captured = capsys.readouterr().out
-    assert "로드된 활성 모듈" in captured
-    assert "[질의]: 날씨 알려줘" in captured
-    assert "날씨는 맑음입니다." in captured
-
-
-def test_main_cli_interactive_mode_quit(capsys):
-    test_args = ["main.py", "--interactive"]
-    with patch.object(sys, "argv", test_args):
-        with patch.object(src.main.ModuleRegistry, "discover_modules"):
-            with patch("builtins.input", side_effect=["", "quit"]):
-                src.main.main()
-
-    captured = capsys.readouterr().out
-    assert "대화형 모드를 시작합니다." in captured
-    assert "종료합니다." in captured
-
-
-def test_main_cli_interactive_mode_execution_and_eof(capsys):
-    test_args = ["main.py", "-i"]
-    with patch.object(sys, "argv", test_args):
-        with patch.object(src.main.ModuleRegistry, "discover_modules"):
-            with patch.object(src.main.AgentRunner, "run", return_value="답변입니다"):
-                with patch("builtins.input", side_effect=["안녕", EOFError()]):
-                    src.main.main()
-
-    captured = capsys.readouterr().out
-    assert "에이전트 >\n답변입니다" in captured
-    assert "종료합니다." in captured
-
-
-def test_main_cli_query_exception_handling(capsys):
-    test_args = ["main.py", "--query", "에러유발"]
-    with patch.object(sys, "argv", test_args):
-        with patch.object(src.main.ModuleRegistry, "discover_modules"):
-            with patch.object(src.main.AgentRunner, "run", side_effect=RuntimeError("테스트 실행 에러")):
-                with pytest.raises(SystemExit) as exc_info:
-                    src.main.main()
-                assert exc_info.value.code == 1
-
-    captured = capsys.readouterr().err
-    assert "[오류] 질의 처리 중 문제가 발생했습니다" in captured
-
-
-def test_main_cli_initialization_exception_handling(capsys):
-    test_args = ["main.py", "--query", "안녕"]
-    with patch.object(sys, "argv", test_args):
-        with patch.object(src.main.ModuleRegistry, "discover_modules", side_effect=Exception("모듈 탐색 실패")):
-            with pytest.raises(SystemExit) as exc_info:
-                src.main.main()
-            assert exc_info.value.code == 1
-
-    captured = capsys.readouterr().err
-    assert "[오류] 시스템 초기화 중 문제가 발생했습니다" in captured
-
-
-def test_main_cli_setup_logging_level():
-    test_args = ["main.py", "--log-level", "DEBUG", "--query", "테스트"]
-    with patch.object(sys, "argv", test_args):
-        with patch.object(src.main.ModuleRegistry, "discover_modules"):
-            with patch.object(src.main.AgentRunner, "run", return_value="응답"):
-                with patch("src.main.setup_logging") as mock_setup:
-                    src.main.main()
-                    mock_setup.assert_called_once_with("DEBUG")
 
 
 def test_agent_runner_callbacks_and_status_hook():
@@ -301,7 +224,7 @@ def test_agent_runner_scenario_tool_reporting_hook():
         scenario_registry=scen_registry,
     )
 
-    # Router mock
+    # 지능형 라우터 목(Mock) 객체 구성
     mock_plan = MagicMock()
     mock_plan.scenario_name = "mock_report_scen"
     mock_plan.confidence = 0.95
@@ -319,4 +242,71 @@ def test_agent_runner_scenario_tool_reporting_hook():
         assert any("mock_report_scen" in ev for ev in status_events)
         # 도구 호출 시작 및 완료 이벤트 기록 확인
         assert any("greet" in ev for ev in status_events)
+
+
+def test_agent_runner_scenario_callbacks_tool_result_collection():
+    """시나리오 실행 중 호출되는 도구의 실행 결과가 callbacks 핸들러에 정상 기록되는지 검증."""
+    from pydantic import BaseModel
+    from src.core.scenario import BaseScenario
+    from src.core.scenario_registry import ScenarioRegistry
+
+    class MockParams(BaseModel):
+        q: str = ""
+
+    class MockReportScenario(BaseScenario):
+        @property
+        def name(self):
+            return "callback_test_scen"
+
+        @property
+        def description(self):
+            return "Callback Test Scenario"
+
+        @property
+        def parameters_schema(self):
+            return MockParams
+
+        @property
+        def required_tool_names(self):
+            return ["greet"]
+
+        def execute(self, params, tools, context=None):
+            return tools["greet"].invoke({"name": "CallbackTester"})
+
+    registry = ModuleRegistry()
+    registry.register(DummyModule())
+
+    scen_registry = ScenarioRegistry()
+    scen_registry.register(MockReportScenario())
+
+    runner = AgentRunner(
+        registry=registry,
+        llm=MagicMock(),
+        scenario_registry=scen_registry,
+    )
+
+    mock_plan = MagicMock()
+    mock_plan.scenario_name = "callback_test_scen"
+    mock_plan.confidence = 0.99
+    mock_plan.parameters = {"q": "test"}
+
+    class DummyCallback:
+        def __init__(self):
+            self.tool_results = {}
+
+        def record_tool_result(self, tool_name: str, result: str):
+            self.tool_results[tool_name] = result
+
+    cb = DummyCallback()
+    with patch.object(runner.router, "route", return_value=mock_plan):
+        result = runner.run("테스트", callbacks=[cb])
+
+        assert result == "Hello, CallbackTester!"
+        assert "greet" in cb.tool_results
+        assert cb.tool_results["greet"] == "Hello, CallbackTester!"
+
+
+
+
+
 

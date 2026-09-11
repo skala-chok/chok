@@ -1,102 +1,74 @@
-# ==============================================================================
-# 🟡 [Step 3 - 노란점] LangChain 도구(@tool) 정의 계층
-# • 역할: LLM이 호출할 유튜브 영상 검색 및 자막 추출 도구를 정의합니다.
-# ➔ 다음 단계: 🟢 [Step 4] context.py 로 이동하여 유튜브 검색 지침을 작성하세요.
-# ==============================================================================
+"""가드레일 적용 및 모킹 가능한 YouTube 검색 도구 모음."""
+
+from typing import Any, Dict, List, Optional
 
 from langchain_core.tools import tool
+
 from .client import YouTubeSearchClient
 
 client = YouTubeSearchClient()
 
 
-@tool
-def search_youtube_videos(query: str, max_results: int = 5) -> str:
-    """Search YouTube for videos related to query. Returns video titles, IDs, and descriptions."""
-    try:
-        data = client.search_videos(query=query, max_results=max_results)
-        items = data.get("items", [])
-        if not items:
-            return "유튜브 검색 결과가 없습니다."
-        output = []
-        for it in items:
-            vid = it.get("id", {}).get("videoId", "N/A")
-            snip = it.get("snippet", {})
-            output.append(
-                f"- 제목: {snip.get('title')}\n"
-                f"  영상ID: {vid}\n"
-                f"  채널: {snip.get('channelTitle')}\n"
-                f"  설명: {snip.get('description')}"
-            )
-        return "\n\n".join(output)
-    except Exception as e:
-        return f"유튜브 검색 중 오류 발생: {str(e)}"
-
-
-@tool
-def get_video_transcript(video_id: str) -> str:
-    """Extract transcript or summary text of a YouTube video given its video_id."""
-    try:
-        return client.get_transcript(video_id)
-    except Exception as e:
-        return f"자막 추출 실패: {str(e)}"
-
-def _format_videos(data: dict) -> str:
-    items = data.get("items", [])
-    if not items:
-        return "조건에 맞는 영상이 없습니다."
-    rows = []
-    for item in items:
+def _video_items(data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """검색 및 재생목록 응답을 단일 비디오 계약 규격으로 일원화 정규화합니다."""
+    videos = []
+    for item in data.get("items", []):
+        if not isinstance(item, dict):
+            continue
         identifier = item.get("id", {})
+        content = item.get("contentDetails", {})
         snippet = item.get("snippet", {})
-        if identifier.get("channelId"):
-            rows.append(f"- 채널: {snippet.get('title', 'N/A')}\n  채널ID: {identifier['channelId']}\n  URL: https://www.youtube.com/channel/{identifier['channelId']}")
-        else:
-            rows.append(
-                f"- 제목: {snippet.get('title', 'N/A')}\n  채널: {snippet.get('channelTitle', 'N/A')}\n"
-                f"  URL: https://www.youtube.com/watch?v={identifier.get('videoId', 'N/A')}\n"
-                f"  게시일: {snippet.get('publishedAt', 'N/A')}"
-            )
-    return "\n\n".join(rows)
+        identifier = identifier if isinstance(identifier, dict) else {}
+        content = content if isinstance(content, dict) else {}
+        snippet = snippet if isinstance(snippet, dict) else {}
+        video_id = identifier.get("videoId", content.get("videoId", ""))
+        videos.append(
+            {
+                "video_id": video_id,
+                "title": snippet.get("title", ""),
+                "description": snippet.get("description", ""),
+                "channel_name": snippet.get("channelTitle", ""),
+                "published_at": snippet.get("publishedAt", content.get("videoPublishedAt", "")),
+                "url": f"https://www.youtube.com/watch?v={video_id}",
+            }
+        )
+    return videos
 
 
 @tool
-def find_youtube_channel(company: str, max_results: int = 5) -> str:
-    """Find candidate official YouTube channels for a company; verify official status before analysis."""
-    return _format_videos(client.find_channels(company, max_results))
+def find_youtube_channel(company_name: str) -> List[Dict[str, Any]]:
+    """기업/브랜드명을 기반으로 후보 YouTube 채널을 검색합니다 (공식 인증 상태는 추가 검증 필요)."""
+    return [
+        {"channel_id": item.get("id", {}).get("channelId", ""), "channel_name": item.get("snippet", {}).get("title", ""),
+         "description": item.get("snippet", {}).get("description", ""),
+         "url": f"https://www.youtube.com/channel/{item.get('id', {}).get('channelId', '')}"}
+        for item in client.find_channels(company_name).get("items", [])
+    ]
 
 
 @tool
-def get_channel_videos(channel_id: str, start_date: str, end_date: str, max_results: int = 10) -> str:
-    """Get advertising-candidate videos from a channel in a YYYY-MM-DD date range for content analysis."""
-    return _format_videos(client.search_videos(
-        "광고", max_results, channel_id, f"{start_date}T00:00:00Z", f"{end_date}T23:59:59Z"
-    ))
+def get_channel_details(channel_id: str) -> Dict[str, Any]:
+    """후보 채널 ID에 대한 공개 메타데이터 및 통계(구독자, 총 조회수 등)를 조회합니다."""
+    items = client.get_channel_details(channel_id).get("items", [])
+    if not items:
+        return {"found": False, "channel_id": channel_id, "error": "채널을 찾을 수 없습니다."}
+    item = items[0]
+    snippet, statistics = item.get("snippet", {}), item.get("statistics", {})
+    return {"found": True, "channel_id": item.get("id", channel_id), "channel_name": snippet.get("title"),
+            "description": snippet.get("description", ""), "subscriber_count": None if statistics.get("hiddenSubscriberCount") else int(statistics.get("subscriberCount", 0)),
+            "total_views": int(statistics.get("viewCount", 0)), "video_count": int(statistics.get("videoCount", 0)),
+            "channel_url": f"https://www.youtube.com/channel/{item.get('id', channel_id)}",
+            "official_status_note": "API 정보만으로 공식 채널을 확정할 수 없습니다."}
 
 
 @tool
-def get_competitor_recent_uploads(channel_id: str, start_date: str, max_results: int = 10) -> str:
-    """Get recent uploads from an identified official competitor channel from YYYY-MM-DD onward."""
-    return _format_videos(client.search_videos("", max_results, channel_id, f"{start_date}T00:00:00Z"))
+def get_channel_videos(channel_id: str, published_after: str, published_before: Optional[str] = None, keyword: Optional[str] = None, max_results: int = 20) -> List[Dict[str, Any]]:
+    """지정된 날짜 범위 내 특정 채널의 업로드 영상을 검색합니다 (선택적 키워드 필터링 지원)."""
+    return _video_items(client.search_videos(keyword or "", min(max_results, 50), channel_id, published_after, published_before))
 
 
 @tool
-def search_paid_promotion_videos(query: str, start_date: str, max_results: int = 10) -> str:
-    """Search videos marked as containing paid product placement from YYYY-MM-DD onward; this is not ad-spend data."""
-    return _format_videos(client.search_videos(
-        query, max_results, published_after=f"{start_date}T00:00:00Z", paid_product_placement=True
-    ))
-
-
-# ==============================================================================
-# [Tool 추가 영역]
-# 새로운 도구(Tool)를 정의하려면 이 영역 아래에 @tool 데코레이터를 사용하여 함수를 추가하시면 됩니다.
-# 작성 예시:
-# @tool
-# def my_new_tool(param: str) -> str:
-#     """도구에 대한 상세 설명을 작성하세요."""
-#     # 로직 구현
-#     return "결과 문자열"
-# 
-# ※ 주의: 새로 작성한 tool은 module.py의 get_tools() 반환 리스트에도 반드시 등록해 주세요.
-# ==============================================================================
+def get_competitor_recent_uploads(channel_id: str, published_after: Optional[str] = None, max_results: int = 20) -> List[Dict[str, Any]]:
+    """채널의 업로드 재생목록을 조회하여 최근 업로드된 영상 목록을 수집합니다 (선택적 날짜 필터링 지원)."""
+    videos = _video_items(client.get_recent_uploads(channel_id, min(max_results, 50)))
+    return [video for video in videos if not published_after or video["published_at"] >= published_after]

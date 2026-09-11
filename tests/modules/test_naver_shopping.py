@@ -7,8 +7,9 @@
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
-from src.modules.naver_shopping.module import NaverShoppingModule
+from src.modules.naver_shopping.module import NaverShoppingModule, NaverShoppingContextProvider
 from src.modules.naver_shopping.tools import (
+    find_naver_category_code,
     get_shopping_trends,
     get_shopping_category_trend,
     get_shopping_category_gender_trend,
@@ -18,8 +19,7 @@ from src.modules.naver_shopping.tools import (
     get_shopping_keyword_age_trend,
 )
 from src.modules.naver_shopping.guardrails import NaverShoppingGuardrail
-from src.modules.naver_shopping.context import NaverShoppingContextProvider
-from src.modules.naver_shopping.client import NaverShoppingClient
+from src.modules.naver_shopping.client import NaverCategoryLookup, NaverShoppingClient
 from src.core.guardrails import wrap_tool_with_guardrails
 
 
@@ -28,8 +28,9 @@ def test_naver_shopping_module_metadata():
     assert mod.name == "naver_shopping"
     assert "쇼핑" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 7
+    assert len(tools) == 8
     tool_names = [t.name for t in tools]
+    assert "find_naver_category_code" in tool_names
     assert "get_shopping_trends" in tool_names
     assert "get_shopping_category_trend" in tool_names
     assert "get_shopping_category_gender_trend" in tool_names
@@ -46,33 +47,21 @@ def test_naver_shopping_module_metadata():
     assert isinstance(ctx, NaverShoppingContextProvider)
 
 
-def test_naver_shopping_module_is_enabled(monkeypatch):
-    mod = NaverShoppingModule()
+@pytest.mark.parametrize(
+    "client_id,client_secret,expected",
+    [
+        ("dummy_id", "dummy_secret", True),
+        ("dummy_id", None, False),
+        (None, "dummy_secret", False),
+        (None, None, False),
+        ("", "", False),
+    ],
+)
+def test_naver_shopping_module_is_enabled(monkeypatch, client_id, client_secret, expected):
+    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_ID", client_id)
+    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_SECRET", client_secret)
+    assert NaverShoppingModule().is_enabled() is expected
 
-    # Both set
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_ID", "dummy_id")
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_SECRET", "dummy_secret")
-    assert mod.is_enabled() is True
-
-    # Only ID set
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_ID", "dummy_id")
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_SECRET", None)
-    assert mod.is_enabled() is False
-
-    # Only Secret set
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_ID", None)
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_SECRET", "dummy_secret")
-    assert mod.is_enabled() is False
-
-    # Neither set
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_ID", None)
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_SECRET", None)
-    assert mod.is_enabled() is False
-
-    # Empty strings
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_ID", "")
-    monkeypatch.setattr("src.modules.naver_shopping.module.settings.NAVER_CLIENT_SECRET", "")
-    assert mod.is_enabled() is False
 
 
 def test_naver_shopping_context_provider():
@@ -87,7 +76,7 @@ def test_naver_shopping_context_provider():
 def test_shopping_guardrail_input_validation():
     guard = NaverShoppingGuardrail()
 
-    # Empty query rejection
+    # 빈 쿼리 입력 차단 검증
     res_empty = guard.validate_input("")
     assert res_empty.passed is False
     assert "검색 쿼리가 비어 있습니다" in res_empty.error_message
@@ -95,7 +84,7 @@ def test_shopping_guardrail_input_validation():
     res_whitespace = guard.validate_input("   ")
     assert res_whitespace.passed is False
 
-    # Valid query
+    # 정상 쿼리 통과 검증
     res_valid = guard.validate_input("맥북 프로 M3")
     assert res_valid.passed is True
 
@@ -156,34 +145,16 @@ def test_shopping_guardrail_date_validation():
     assert "최대 5개" in too_many_keywords.error_message
 
 
-def test_shopping_guardrail_html_sanitization():
+def test_shopping_guardrail_sanitization():
+    """사후 출력 정제 시 HTML 태그 제거 및 이메일/전화번호 마스킹 검증."""
     guard = NaverShoppingGuardrail()
-    raw = "상품명: <b>Apple</b> 맥북 프로 &quot;16인치&quot; &amp; 가방"
+    raw = '상품명: <b>Apple</b> &quot;16인치&quot; seller@shop.com 문의: 010-2222-3333'
     cleaned = guard.sanitize_output("get_shopping_trends", raw)
-    assert "<b>" not in cleaned
-    assert "</b>" not in cleaned
-    assert "&quot;" not in cleaned
-    assert "&amp;" not in cleaned
-    assert cleaned == '상품명: Apple 맥북 프로 "16인치" & 가방'
+    assert "<b>" not in cleaned and "&quot;" not in cleaned
+    assert "[EMAIL_MASKED]" in cleaned and "[PHONE_MASKED]" in cleaned
+    assert "seller@shop.com" not in cleaned and "010-2222-3333" not in cleaned
+    assert guard.sanitize_output("get_shopping_trends", {"data": "test"}) == {"data": "test"}
 
-    # Non-string output
-    dict_output = {"data": "test"}
-    assert guard.sanitize_output("get_shopping_trends", dict_output) == dict_output
-
-
-def test_naver_shopping_pii_masking():
-    """handoff/03_guidelines.md 2절 - 사후 출력 정제 시 이메일/전화번호 마스킹 검증."""
-    guard = NaverShoppingGuardrail()
-
-    raw_email = "판매자 문의: seller@shop.com"
-    cleaned_email = guard.sanitize_output("get_shopping_trends", raw_email)
-    assert "seller@shop.com" not in cleaned_email
-    assert "[EMAIL_MASKED]" in cleaned_email
-
-    raw_phone = "고객센터 010-2222-3333"
-    cleaned_phone = guard.sanitize_output("get_shopping_category_trend", raw_phone)
-    assert "010-2222-3333" not in cleaned_phone
-    assert "[PHONE_MASKED]" in cleaned_phone
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
@@ -476,164 +447,99 @@ def test_shopping_insight_guardrail_validation():
     assert empty_keyword.passed is False
     assert "keyword" in empty_keyword.error_message
 
-    # Other tools should pass
+    # 검증 대상 외 기타 도구 통과 검증
     assert guard.validate_tool_args("other_tool", {"anything": 100}).passed is True
 
 
+CLIENT_FALLBACK_CASES = [
+    ("get_datalab_trend", (["노트북"], "2026-01-01", "2026-02-01")),
+    ("get_category_trend", ({"패션의류": "50000000"}, "2026-01-01", "2026-01-31")),
+    ("get_keyword_gender_trend", ("50000000", "니트", "2026-01-01", "2026-01-31")),
+    ("get_category_gender_trend", ("50000000", "2026-01-01", "2026-01-31")),
+    ("get_category_age_trend", ("50000000", "2026-01-01", "2026-01-31")),
+    ("get_category_keyword_trend", ("50000000", {"니트": "니트"}, "2026-01-01", "2026-01-31")),
+    ("get_keyword_age_trend", ("50000000", "니트", "2026-01-01", "2026-01-31")),
+]
+
+
+@pytest.mark.parametrize("method_name,args", CLIENT_FALLBACK_CASES)
 @patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_datalab_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - OpenAPI 통신 장애 시 client가 폴백 목 데이터를 반환하는지 검증."""
+def test_client_openapi_failure_fallback(mock_post, method_name, args):
+    """handoff/04_testing_harness.md 3.3 - OpenAPI 장애 시 client가 폴백 목 데이터를 반환하는지 검증."""
     mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-
     client = NaverShoppingClient()
-    result = client.get_datalab_trend(["노트북"], "2026-01-01", "2026-02-01")
-
+    result = getattr(client, method_name)(*args)
     assert "results" in result
     assert "[Fallback Mock]" in result["results"][0]["title"]
 
 
+TOOL_FALLBACK_CASES = [
+    (get_shopping_trends, {"keywords": "노트북", "start_date": "2026-01-01", "end_date": "2026-02-01"}),
+    (get_shopping_category_trend, {"categories": "패션의류:50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    (get_shopping_category_gender_trend, {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    (get_shopping_category_age_trend, {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    (get_shopping_keyword_trend, {"category_code": "50000000", "keywords": "니트:니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    (get_shopping_keyword_gender_trend, {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}),
+    (get_shopping_keyword_age_trend, {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}),
+]
+
+
+@pytest.mark.parametrize("tool_fn,args", TOOL_FALLBACK_CASES)
 @patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_category_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 쇼핑 인사이트(분야) 공통 헬퍼의 폴백 목 데이터 검증."""
-    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
-
-    client = NaverShoppingClient()
-    result = client.get_category_trend({"패션의류": "50000000"}, "2026-01-01", "2026-01-31")
-
-    assert "results" in result
-    assert "[Fallback Mock]" in result["results"][0]["title"]
-
-
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_keyword_gender_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 쇼핑 인사이트(키워드) 공통 헬퍼의 폴백 목 데이터 검증."""
-    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-
-    client = NaverShoppingClient()
-    result = client.get_keyword_gender_trend("50000000", "니트", "2026-01-01", "2026-01-31")
-
-    assert "results" in result
-    assert "[Fallback Mock]" in result["results"][0]["title"]
-
-
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_category_gender_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 분야 성별 트렌드 폴백 목 데이터 검증."""
-    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-
-    client = NaverShoppingClient()
-    result = client.get_category_gender_trend("50000000", "2026-01-01", "2026-01-31")
-
-    assert "results" in result
-    assert "[Fallback Mock]" in result["results"][0]["title"]
-
-
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_category_age_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 분야 연령별 트렌드 폴백 목 데이터 검증."""
-    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
-
-    client = NaverShoppingClient()
-    result = client.get_category_age_trend("50000000", "2026-01-01", "2026-01-31")
-
-    assert "results" in result
-    assert "[Fallback Mock]" in result["results"][0]["title"]
-
-
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_category_keyword_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 분야 내 키워드별 트렌드 폴백 목 데이터 검증."""
-    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-
-    client = NaverShoppingClient()
-    result = client.get_category_keyword_trend("50000000", {"니트": "니트"}, "2026-01-01", "2026-01-31")
-
-    assert "results" in result
-    assert "[Fallback Mock]" in result["results"][0]["title"]
-
-
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_client_get_keyword_age_trend_openapi_failure_fallback(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 키워드 연령별 트렌드 폴백 목 데이터 검증."""
-    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
-
-    client = NaverShoppingClient()
-    result = client.get_keyword_age_trend("50000000", "니트", "2026-01-01", "2026-01-31")
-
-    assert "results" in result
-    assert "[Fallback Mock]" in result["results"][0]["title"]
-
-
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_trends_openapi_failure_fallback_via_tool(mock_post):
+def test_tool_openapi_failure_fallback(mock_post, tool_fn, args):
     """폴백 목 데이터가 Tool 계층까지 정상적으로 전파되는지 검증 (크래시 없이 응답)."""
     mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-    res = get_shopping_trends.invoke({
-        "keywords": "노트북",
-        "start_date": "2026-01-01",
-        "end_date": "2026-02-01",
-    })
+    res = tool_fn.invoke(args)
     assert "[Fallback Mock]" in res
 
 
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_category_trend_openapi_failure_fallback_via_tool(mock_post):
-    """handoff/04_testing_harness.md 3.3 - 나머지 6개 쇼핑 인사이트 도구도 폴백 전파를 검증."""
-    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-    res = get_shopping_category_trend.invoke(
-        {"categories": "패션의류:50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
-    )
-    assert "[Fallback Mock]" in res
+
+def test_category_lookup_finds_exact_leaf_matches():
+    results = NaverCategoryLookup.search("러닝화")
+    assert len(results) == 2
+    codes = {r["code"] for r in results}
+    assert codes == {"50003854", "50003835"}
+    assert all("러닝화" in r["path"] for r in results)
 
 
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_category_gender_trend_openapi_failure_fallback_via_tool(mock_post):
-    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
-    res = get_shopping_category_gender_trend.invoke(
-        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
-    )
-    assert "[Fallback Mock]" in res
+def test_category_lookup_no_match_returns_empty():
+    assert NaverCategoryLookup.search("존재하지않는상품명xyz123") == []
 
 
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_category_age_trend_openapi_failure_fallback_via_tool(mock_post):
-    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-    res = get_shopping_category_age_trend.invoke(
-        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
-    )
-    assert "[Fallback Mock]" in res
+def test_category_lookup_empty_keyword_returns_empty():
+    assert NaverCategoryLookup.search("") == []
+    assert NaverCategoryLookup.search("   ") == []
 
 
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_keyword_trend_openapi_failure_fallback_via_tool(mock_post):
-    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
-    res = get_shopping_keyword_trend.invoke(
-        {
-            "category_code": "50000000",
-            "keywords": "니트:니트",
-            "start_date": "2026-01-01",
-            "end_date": "2026-01-31",
-        }
-    )
-    assert "[Fallback Mock]" in res
+def test_category_lookup_respects_limit():
+    results = NaverCategoryLookup.search("신발", limit=3)
+    assert len(results) <= 3
 
 
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_keyword_gender_trend_openapi_failure_fallback_via_tool(mock_post):
-    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
-    res = get_shopping_keyword_gender_trend.invoke(
-        {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
-    )
-    assert "[Fallback Mock]" in res
+def test_find_naver_category_code_tool_multiple_candidates():
+    res = find_naver_category_code.invoke({"keyword": "러닝화"})
+    assert "카테고리 후보 2건" in res
+    assert "category_code=50003854" in res
+    assert "category_code=50003835" in res
 
 
-@patch("src.modules.naver_shopping.client.requests.post")
-def test_get_shopping_keyword_age_trend_openapi_failure_fallback_via_tool(mock_post):
-    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
-    res = get_shopping_keyword_age_trend.invoke(
-        {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
-    )
-    assert "[Fallback Mock]" in res
+def test_find_naver_category_code_tool_no_match():
+    res = find_naver_category_code.invoke({"keyword": "존재하지않는상품명xyz123"})
+    assert "찾지 못했습니다" in res
+
+
+def test_find_naver_category_code_guardrail_blocks_empty_keyword():
+    guard = NaverShoppingGuardrail()
+    result = guard.validate_tool_args("find_naver_category_code", {"keyword": ""})
+    assert result.passed is False
+    assert "keyword" in result.error_message
+
+
+def test_naver_shopping_context_mentions_category_lookup():
+    provider = NaverShoppingContextProvider()
+    snippet = provider.get_system_prompt_snippet()
+    assert "find_naver_category_code" in snippet
+    assert "추측하지" in snippet
 
 
 def test_naver_shopping_registry_discovery():

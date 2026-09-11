@@ -10,10 +10,15 @@ from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
 from src.config import settings
 from .tools import (
     find_youtube_channel, get_channel_videos, get_competitor_recent_uploads,
-    get_video_transcript, search_paid_promotion_videos, search_youtube_videos,
+    get_channel_details,
 )
 from .guardrails import YouTubeSearchGuardrail
-from .context import YouTubeSearchContextProvider
+class YouTubeSearchContextProvider(BaseContextProvider):
+    def get_system_prompt_snippet(self) -> str:
+        return (
+            "- 회사의 공식 채널 후보 탐색에는 'find_youtube_channel'을 호출하십시오.\n"
+            "- 채널 상세 확인, 기간별 영상, 최근 업로드에는 각 전용 도구를 호출하십시오."
+        )
 
 
 class YouTubeSearchModule(BaseAgentModule):
@@ -29,10 +34,9 @@ class YouTubeSearchModule(BaseAgentModule):
         return bool(settings.YOUTUBE_API_KEY)
 
     def get_tools(self) -> List[BaseTool]:
-        # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
         return [
-            search_youtube_videos, get_video_transcript, find_youtube_channel,
-            get_channel_videos, get_competitor_recent_uploads, search_paid_promotion_videos,
+            find_youtube_channel, get_channel_details, get_channel_videos,
+            get_competitor_recent_uploads,
         ]
 
     def get_guardrails(self) -> List[BaseGuardrail]:

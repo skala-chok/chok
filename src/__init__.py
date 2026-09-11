@@ -1,1 +1,1 @@
-"""LangChain Multi-Worker Collaborative Agent Package."""
+"""LangChain 멀티 워커 협업 에이전트 패키지."""

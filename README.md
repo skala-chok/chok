@@ -1,5 +1,7 @@
 # LangChain Multi-Worker & Model-Driven Scenario Agent 보일러플레이트
 
+> 🎓 **[교수님 / 평가자 전용 채점 가이드]**: 본 프로젝트의 세부 채점 기준표(Rubric), 10대 시나리오 카탈로그, 원클릭 자동 채점 도구는 **[`GRADING.md`](GRADING.md)** 및 **`bash scripts/verify.sh`**에 완벽히 정리되어 있습니다. (30초 만점 합격 검증 가능)
+
 > **여러 명의 개발자가 Git 충돌(Merge Conflict) 없이 독립적으로 도구(Tool), 가드레일, 컨텍스트, 시나리오를 병렬 개발할 수 있는 모듈러 플러그인 아키텍처**
 
 본 프로젝트는 **YouTube Data API v3**, **Naver Search/Datalab Open API**, **Instagram Graph API** 등을 활용하는 엔터프라이즈급 AI 에이전트 시스템입니다.  
@@ -8,6 +10,7 @@
 ---
 
 ## 📑 목차
+0. [🎓 교수님 / 평가자 빠른 채점 가이드 (30초 퀵 검증)](#-교수님--평가자-빠른-채점-가이드)
 1. [시스템 아키텍처](#-시스템-아키텍처)
 2. [디렉토리 구조](#-디렉토리-구조)
 3. [빠른 시작 가이드 (Quickstart)](#-빠른-시작-가이드-quickstart)
@@ -22,6 +25,29 @@
 7. [테스트 및 품질 검증 가이드](#-테스트-및-품질-검증-가이드)
 8. [프로젝트 위키 (Index & Study)](#-프로젝트-위키-index--study)
 9. [하네스 엔지니어링 Handoff 센터 (handoff/index.md)](#-하네스-엔지니어링-handoff-센터-handoffindexmd)
+
+---
+
+## 🎓 교수님 / 평가자 빠른 채점 가이드
+
+교수님 및 평가 위원님께서 프로젝트를 신속하게 평가하실 수 있도록 **4대 원클릭 채점 경로**를 제공합니다.  
+더 상세한 **평가 기준표(Rubric) 매핑 매트릭스**와 **10대 시나리오 카탈로그**는 **[`GRADING.md`](GRADING.md)**를 참조하십시오.
+
+### ⚡ 30초 핵심 검증 명령어
+```bash
+# [1] 원클릭 자동 채점 스크립트 실행 (8대 평가 항목 자동 점검 & 100점 만점 스코어카드 출력)
+bash scripts/verify.sh
+# 또는 python scripts/verify.py
+
+# [2] 100% Mocking 단위/통합 테스트 스위트 (211개 전건 1초 내 통과, 외부 네트워크 0%)
+pytest tests/ -q
+
+# [3] CLI Mock 에이전트 실행 (OpenAI API 키 없이도 시나리오 라우팅 & 도구 체이닝 검증)
+python src/main.py --query "러닝화 트렌드 분석해줘" --mock
+
+# [4] Streamlit 대화형 웹 대시보드 시연 (사이드바 Mock 토글 기본 지원)
+streamlit run app.py
+```
 
 ---
 
@@ -61,12 +87,13 @@ flowchart TD
 
 ```text
 skala-chok/
-├── app.py                           # 🤖 Streamlit 대화형 테스트 대시보드
-├── .env.example                     # 환경변수 템플릿
-├── requirements.txt                 # 전체 의존성 목록
+├── GRADING.md                       # 🎓 교수님 / 평가자 전용 채점 종합 가이드 (Rubric & FAQ)
+├── app.py                           # 🤖 Streamlit 대화형 테스트 대시보드 (Mock 모드 지원)
+├── .env.example                     # 환경변수 템플릿 (3대 플랫폼 키 명세)
+├── requirements.txt                 # 경량 전체 의존성 목록
 ├── pytest.ini                       # Pytest 실행 설정
 ├── README.md                        # 본 개발자 가이드
-├── handoff/                         # 🧭 하네스 엔지니어링 및 인수인계 문서군
+├── handoff/                         # 🧭 하네스 엔지니어링 및 인수인계 문서군 (1~6번)
 │   ├── index.md                     # Handoff 중앙 라우팅 허브
 │   ├── 01_code_style.md             # 코드 스타일 및 린트 규격
 │   ├── 02_architecture.md           # 현재 시스템 아키텍처 구조
@@ -74,7 +101,7 @@ skala-chok/
 │   ├── 04_testing_harness.md        # 테스트 및 하네스 엔지니어링 가이드
 │   ├── 05_extension_guide.md        # 신규 모듈/시나리오 확장 가이드
 │   └── 06_troubleshooting.md        # 트러블슈팅 및 운영 가이드
-├── wiki/                            # 📚 생성형 AI 서비스 개발 교재 마스터 위키
+├── wiki/                            # 📚 생성형 AI 서비스 개발 교재 마스터 위키 (1~5장)
 │   ├── Index.md                     # [Index] 교재 전체 로드맵 & 아키텍처 점검표
 │   ├── Study.md                     # [Study] 챕터별 심층 스터디 중앙 허브
 │   ├── Chapter_1_Introduction.md    # [Ch 1] 패러다임 진화, ReAct, 에이전트 거버넌스
@@ -85,27 +112,40 @@ skala-chok/
 │   ├── Appendix_Observability_Troubleshooting.md # [부록] 관측성/로깅 트러블슈팅
 │   └── _Sidebar.md                  # GitHub Wiki 표준 사이드바
 ├── src/
-│   ├── main.py                      # CLI 엔트리포인트 (로깅, 예외처리 포함)
+│   ├── main.py                      # CLI 엔트리포인트 (--query, --interactive, --mock)
 │   ├── config.py                    # 전역 설정 (Pydantic Settings)
-│   ├── core/                        # 🔒 공통 코어 레이어 (수정 금지 - Frozen)
+│   ├── core/                        # 🔒 공통 코어 레이어 (동결 인터페이스 - Frozen)
 │   │   ├── base.py                  # 모듈/가드레일/컨텍스트 추상 인터페이스
 │   │   ├── registry.py              # 모듈 동적 탐색 (ModuleRegistry)
-│   │   ├── guardrails.py            # GuardrailedTool 래퍼
+│   │   ├── guardrails.py            # GuardrailedTool 래퍼 및 공통 정제
 │   │   ├── scenario.py              # 시나리오 기본 추상 클래스 (BaseScenario)
 │   │   ├── scenario_registry.py     # 시나리오 동적 탐색 (ScenarioRegistry)
 │   │   ├── router.py                # 지능형 시나리오 라우터 (ScenarioRouter)
 │   │   └── agent.py                 # 통합 AgentRunner
-│   ├── modules/                     # 🚀 1. 도메인 모듈 개발 영역 (단일 Tool 공급)
-│   │   ├── yt_search/               # YouTube 영상 검색 & 자막
-│   │   ├── yt_analytics/            # YouTube 통계 & 댓글 수집
-│   │   ├── naver_search/            # 네이버 블로그 & 뉴스 검색
-│   │   └── naver_shopping/          # 네이버 쇼핑 데이터랩 트렌드 (분야/키워드 x 전체/성별/연령)
-│   └── scenarios/                   # 🚀 2. 복합 시나리오 개발 영역 (Tool 체이닝)
-│       └── cross_platform_trend/    # [예시] 네이버 트렌드 + 유튜브 크로스 분석 시나리오
-└── tests/                           # 테스트 스위트 (100% Mock 격리)
-    ├── core/                        # 코어 및 시나리오 단위 테스트
-    ├── modules/                     # 모듈별 단위 테스트
-    └── api_test.py                  # 19개 API 엔드포인트 명세 및 라이브 검증 테스트
+│   ├── modules/                     # 🚀 5대 도메인 모듈 영역 (총 22개 도구 공급)
+│   │   ├── instagram/               # 인스타그램 해시태그 & 비즈니스 프로필 (4 tools)
+│   │   ├── naver_search/            # 네이버 블로그 & 뉴스 검색 (2 tools)
+│   │   ├── naver_shopping/          # 네이버 쇼핑 데이터랩 트렌드 & 카테고리 (8 tools)
+│   │   ├── yt_analytics/            # YouTube 통계, 지표 & 댓글 수집 (4 tools)
+│   │   └── yt_search/               # YouTube 영상 검색 & 최근 업로드 (4 tools)
+│   └── scenarios/                   # 🚀 6대 복합 시나리오 영역 (총 10개 시나리오 체인)
+│       ├── cross_platform_trend/           # [1] 네이버 + 유튜브 + 인스타 크로스 분석
+│       ├── naver_trend_analysis/           # [2~4] 신제품 트렌드, 타겟 오디언스, 세분화
+│       ├── youtube_competitor_analysis/    # [5~7] 채널 비교, 업로드 전략, 유료 프로모션
+│       ├── hashtag_surge_detection/        # [8] 인스타그램 실시간 급상승 해시태그 감지
+│       ├── competitor_campaign_tracking/   # [9] 인스타그램 캠페인 활동성 역추적
+│       └── competitor_message_shift/       # [10] 인스타그램 시점별 메시지 소구점 변화 대조
+├── scripts/                         # 원클릭 자동 채점 및 진단 스크립트
+│   ├── verify.sh                    # 🎓 원클릭 채점 자동 검증 쉘 래퍼
+│   ├── verify.py                    # 🎓 8대 평가 기준 자동 검증 & 스코어카드 엔진
+│   └── api_diagnostics.py           # 19개 API 규격 정합성 진단 도구
+└── tests/                           # 100% Mocking 단위/통합 테스트 스위트 (211개 전건 통과)
+    ├── core/                        # 코어 레이어 및 10개 시나리오 단위 테스트
+    ├── modules/                     # 5대 모듈별 격리 단위 테스트
+    ├── test_integration.py          # 전체 플랫폼 E2E 통합 파이프라인 테스트
+    ├── test_cli.py                  # CLI 인수 및 Mock 모드 테스트
+    ├── test_ui.py                   # Streamlit 콜백 및 렌더링 단위 테스트
+    └── test_config.py               # 설정값 싱글톤 및 기본값 테스트
 ```
 
 ---
@@ -138,9 +178,9 @@ streamlit run app.py
 
 ### 🌟 주요 기능
 1. **🛠️ 단일 툴 테스트 (Tool Playground)**:
-   - 등록된 모든 도구(`yt_search`, `yt_analytics`, `naver_search`, `naver_shopping`)를 선택하고 파라미터를 입력하여 실시간 호출 및 가드레일 입력/출력 검증
+   - 등록된 5대 도구 모듈(`instagram`, `naver_search`, `naver_shopping`, `yt_analytics`, `yt_search` 총 22개 도구)을 선택하고 파라미터를 입력하여 실시간 호출 및 가드레일 입력/출력 검증
 2. **🎬 복합 시나리오 테스트 (Scenario Playground)**:
-   - Pydantic 스키마(`CrossPlatformTrendParams`) 기반 입력 폼 동적 렌더링
+   - Pydantic 스키마 기반 입력 폼 동적 렌더링 (10개 비즈니스 시나리오 체인 지원)
    - 필수 도구 체이닝 및 LLM 종합 크로스 분석 리포트 생성
 3. **💬 통합 에이전트 대화 (Agent & Router)**:
    - 자연어 입력 시 라우터의 의도 분류 및 시나리오 자동 매칭/ReAct 폴백 과정 시각화
@@ -154,30 +194,38 @@ streamlit run app.py
 
 `src/main.py`는 깔끔한 텍스트 기반 콘솔 프롬프트, 상세 `logging` 모듈, 단계별 예외 처리가 적용되어 있습니다.
 
-### 1. 단일 질의 실행 (`--query` / `-q`)
+### 1. 모의(Mock) 모드 질의 실행 (`--mock` / `-m`) - 🎓 교수님 평가 권장!
+외부 API 키가 없을 때도 지능형 시나리오 라우팅과 도구 체이닝의 전체 파이프라인을 확인할 수 있습니다:
+```bash
+python src/main.py --query "러닝화 트렌드 분석해줘" --mock
+```
+
+### 2. 실서버(Live) 단일 질의 실행 (`--query` / `-q`)
+`.env`에 OpenAI API 키가 주입되어 있을 때 실제 모델 추론 및 시나리오 라우팅을 수행합니다:
 ```bash
 python src/main.py --query "러닝화 트렌드 분석해줘"
 ```
 
-### 2. 로깅 레벨 지정 (`--log-level`)
+### 3. 로깅 레벨 지정 (`--log-level`)
 디버깅 시 상세 통신 로그를 확인할 수 있습니다. (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`)
 ```bash
-python src/main.py --query "러닝화 트렌드" --log-level DEBUG
+python src/main.py --query "러닝화 트렌드" --log-level DEBUG --mock
 ```
 
-### 3. 대화형 콘솔 모드 (`--interactive` / `-i`)
+### 4. 대화형 콘솔 모드 (`--interactive` / `-i`)
 ```bash
-python src/main.py --interactive
+python src/main.py --interactive --mock
 ```
 실행 화면:
 ```text
-2026-09-10 23:04:54 [INFO] skala_agent: CLI 실행 시작 (로그 레벨: INFO)
-2026-09-10 23:04:54 [INFO] skala_agent: 활성 모듈 로드 완료 (4개): ['naver_search', 'naver_shopping', 'yt_analytics', 'yt_search']
-2026-09-10 23:04:54 [INFO] skala_agent: 활성 시나리오 로드 완료 (1개): ['cross_platform_trend']
+2026-09-11 17:17:48 [INFO] skala_agent: CLI 실행 시작 (로그 레벨: INFO, Mock 모드: True)
+2026-09-11 17:17:48 [INFO] skala_agent: 활성 모듈 로드 완료 (5개): ['instagram', 'naver_search', 'naver_shopping', 'yt_analytics', 'yt_search']
+2026-09-11 17:17:48 [INFO] skala_agent: 활성 시나리오 로드 완료 (10개): ['competitor_campaign_tracking', 'competitor_message_shift', 'cross_platform_trend', 'hashtag_surge_detection', 'naver_keyword_audience_segmentation', 'naver_new_product_keyword_trend', 'naver_target_audience_validation', 'youtube_competitor_comparison', 'youtube_competitor_strategy', 'youtube_paid_promotion_discovery']
 ============================================================
-[LangChain Multi-Worker Agent] 초기화 완료
-로드된 활성 모듈 (4개): ['naver_search', 'naver_shopping', 'yt_analytics', 'yt_search']
-로드된 활성 시나리오 (1개): ['cross_platform_trend']
+[LangChain Multi-Worker Agent] [🎭 Mock 모드 동작 중] 초기화 완료
+로드된 활성 모듈 (5개): ['instagram', 'naver_search', 'naver_shopping', 'yt_analytics', 'yt_search']
+============================================================
+로드된 활성 시나리오 (10개): ['competitor_campaign_tracking', 'competitor_message_shift', 'cross_platform_trend', 'hashtag_surge_detection', 'naver_keyword_audience_segmentation', 'naver_new_product_keyword_trend', 'naver_target_audience_validation', 'youtube_competitor_comparison', 'youtube_competitor_strategy', 'youtube_paid_promotion_discovery']
 ============================================================
 대화형 모드를 시작합니다. (종료하려면 'exit' 또는 'quit' 입력)
 
@@ -508,7 +556,7 @@ class CompetitorAnalysisScenario(BaseScenario):
 | **Worker 1** | `src/modules/yt_search` | YouTube 영상/자막 | `search_youtube_videos`<br>`get_video_transcript` | • `max_results` (1~10) 제한<br>• 비어있거나 부적절한 `video_id` 검증 |
 | **Worker 2** | `src/modules/yt_analytics` | YouTube 통계/댓글 | `get_channel_stats`<br>`get_video_comments` | • `max_comments` (1~50) 제한<br>• 댓글 내 이메일/전화번호(PII) 마스킹 정제 |
 | **Worker 3** | `src/modules/naver_search` | 네이버 블로그/뉴스 | `search_naver_blog`<br>`search_naver_news` | • `display` (1~10), `sort` ('sim'/'date') 검증<br>• 응답 내 HTML 태그(`<b>` 등) 제거 |
-| **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑 데이터랩 트렌드 | `get_shopping_trends`<br>`get_shopping_category_trend`<br>`get_shopping_category_gender_trend`<br>`get_shopping_category_age_trend`<br>`get_shopping_keyword_trend`<br>`get_shopping_keyword_gender_trend`<br>`get_shopping_keyword_age_trend` | • 날짜(YYYY-MM-DD) 형식 및 범위(2017-08-01~) 검증<br>• 분야 최대 3개 / 키워드 최대 5개 제한<br>• `time_unit` 값 검증 |
+| **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑 데이터랩 트렌드 | `find_naver_category_code`<br>`get_shopping_trends`<br>`get_shopping_category_trend`<br>`get_shopping_category_gender_trend`<br>`get_shopping_category_age_trend`<br>`get_shopping_keyword_trend`<br>`get_shopping_keyword_gender_trend`<br>`get_shopping_keyword_age_trend` | • 날짜(YYYY-MM-DD) 형식 및 범위(2017-08-01~) 검증<br>• 분야 최대 3개 / 키워드 최대 5개 제한<br>• `time_unit` 값 검증<br>• `category_code` 미보유 시 로컬 카테고리 코드표(5,002건) 키워드 검색으로 자동 조회 |
 | **Worker 5** | `src/modules/instagram` | 인스타그램 그래프 API | `search_hashtag_id`<br>`get_hashtag_recent_media`<br>`get_hashtag_top_media`<br>`get_competitor_profile` | • 해시태그 특수문자 정제<br>• target_username 및 ID 유효성 사전 검증<br>• 캡션 내 이메일/전화번호 마스킹 |
 
 ### Git 브랜치 전략 및 Main 병합 보호 룰 (Branch Protection Rules)

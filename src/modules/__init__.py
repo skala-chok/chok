@@ -1,1 +1,1 @@
-"""Worker domain modules."""
+"""워커 도메인 모듈 패키지."""

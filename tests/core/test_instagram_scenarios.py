@@ -165,6 +165,55 @@ class TestScenario1HashtagSurgeDetection:
         report = HashtagSurgeDetectionReport(**data)
         assert report.base_keyword == "성남 맛집"
         assert len(report.metrics) == 3
+        assert report.time_window_hours == 24
+
+    def test_scenario1_custom_hours_range(self):
+        """사용자가 6시간 등 특정 시간 범위를 지정했을 때 정상 반영되는지 검증."""
+        scen = HashtagSurgeDetectionScenario()
+        tools = {
+            "search_hashtag_id": mock_search_hashtag_id,
+            "get_hashtag_recent_media": mock_get_hashtag_recent_media,
+            "get_hashtag_top_media": mock_get_hashtag_top_media,
+        }
+        params = HashtagSurgeDetectionParams(
+            base_keyword="성남 맛집",
+            compare_hashtags=["#판교 맛집"],
+            hours_range=6,
+        )
+
+        output = scen.execute(params=params, tools=tools)
+        assert "최신글 수(6h)" in output
+        assert "최근 6시간" in output
+
+        json_str = output.split("```json")[1].split("```")[0].strip()
+        data = json.loads(json_str)
+        report = HashtagSurgeDetectionReport(**data)
+        assert report.time_window_hours == 6
+        assert report.metrics[0].time_window_hours == 6
+
+    def test_scenario1_hours_range_over_24_capped(self):
+        """사용자가 24시간을 초과하여 지정했을 때 24시간으로 캡 적용 및 고지되는지 검증."""
+        scen = HashtagSurgeDetectionScenario()
+        tools = {
+            "search_hashtag_id": mock_search_hashtag_id,
+            "get_hashtag_recent_media": mock_get_hashtag_recent_media,
+            "get_hashtag_top_media": mock_get_hashtag_top_media,
+        }
+        params = HashtagSurgeDetectionParams(
+            base_keyword="성남 맛집",
+            compare_hashtags=["#판교 맛집"],
+            hours_range=48,
+        )
+
+        output = scen.execute(params=params, tools=tools)
+        assert "최신글 수(24h)" in output
+        assert "API 최대 한도인 24시간" in output
+
+        json_str = output.split("```json")[1].split("```")[0].strip()
+        data = json.loads(json_str)
+        report = HashtagSurgeDetectionReport(**data)
+        assert report.time_window_hours == 24
+        assert report.hours_notice is not None
 
 
 class TestScenario2CompetitorCampaignTracking:
@@ -213,6 +262,49 @@ class TestScenario2CompetitorCampaignTracking:
         data = json.loads(json_str)
         report = CampaignTrackingReport(**data)
         assert len(report.competitors) == 2
+
+    def test_scenario2_non_dining_brand_keywords_exclusion(self):
+        """올리브영 등 비외식 브랜드 분석 시 하드코딩된 맛집 키워드가 배제되고 동적 해시태그가 추출되는지 검증."""
+        @tool
+        def mock_oliveyoung_profile(username: str) -> str:
+            """올리브영 프로필 Mock 도구."""
+            return (
+                f"### [경쟁사 공식 프로필] @{username} (올리브영)\n"
+                f"• 공식 채널 검증: Bio=\"건강하고 아름다운 일상을 위한 올리브영 공식 인스타그램\" | Web=\"https://oliveyoung.co.kr\"\n"
+                f"• 팔로워: 1,500,000명 | 팔로우: 10명 | 총 게시물: 2,500개\n"
+                f"• 수집된 최근 게시물: 2건\n\n"
+                f"1. [ID: oy1] 좋아요: 5,000개 | 댓글: 350개 | 일시: 2026-09-10T12:00:00+0000\n"
+                f"   - 캡션: \"9월 올영세일 시작! 최대 70% 할인 특가 #올영세일 #올리브영 #뷰티 #할인 #광고\"\n"
+                f"2. [ID: oy2] 좋아요: 3,200개 | 댓글: 120개 | 일시: 2026-09-05T10:00:00+0000\n"
+                f"   - 캡션: \"가을 환절기 보습 케어 루틴 추천 #스킨케어 #보습 #올리브영추천\"\n"
+                f"• 게시물 타임스탬프 목록 (빈도 계산용): [\"2026-09-10T12:00:00+0000\", \"2026-09-05T10:00:00+0000\"]\n"
+                f"※ 지표 고지: 조회수(View Count) 부재."
+            )
+
+        scen = CompetitorCampaignTrackingScenario()
+        tools = {"get_competitor_profile": mock_oliveyoung_profile}
+        params = CompetitorCampaignTrackingParams(
+            competitor_usernames=["oliveyoung_official"],
+            target_topic="올영세일",
+        )
+
+        output = scen.execute(params=params, tools=tools)
+        json_str = output.split("```json")[1].split("```")[0].strip()
+        data = json.loads(json_str)
+        report = CampaignTrackingReport(**data)
+
+        comp = report.competitors[0]
+        # 맛집/외식 키워드가 일절 포함되지 않아야 함
+        for forbidden in ["성남", "분당", "판교", "맛집", "회식", "파스타", "카페"]:
+            assert forbidden not in comp.campaign_keywords_found
+
+        # 동적으로 추출된 뷰티/세일 해시태그 및 타깃 토픽 포함 검증
+        assert "올영세일" in comp.campaign_keywords_found
+        assert "올리브영" in comp.campaign_keywords_found
+        assert "뷰티" in comp.campaign_keywords_found
+        # 광고 컴플라이언스 태그는 제외되어야 함
+        assert "광고" not in comp.campaign_keywords_found
+
 
 
 class TestScenario3CompetitorMessageShift:
@@ -287,6 +379,40 @@ class TestScenario3CompetitorMessageShift:
         # 통과 기준: 표본 부족 시 변화 없음이 아니라 '판단 불가'로 보고
         assert "판단 불가" in output
 
+    def test_scenario3_required_tool_names_and_hashtag_id_resolution(self):
+        """시나리오 3이 search_hashtag_id를 required_tool_names에 포함하고,
+        카테고리 키워드로 ID를 먼저 조회한 후 get_hashtag_top_media에 전달하는지 검증."""
+        scen = CompetitorMessageShiftScenario()
+        assert "search_hashtag_id" in scen.required_tool_names
+        assert "get_hashtag_top_media" in scen.required_tool_names
+        assert "get_competitor_profile" in scen.required_tool_names
+
+        mock_search = MagicMock()
+        mock_search.invoke.return_value = (
+            "[정규화 안내] 검색어 '성남 맛집'에서 '#'과 공백을 제거하여 'q=성남맛집'로 조회합니다.\n"
+            "• 해시태그: #성남맛집\n"
+            "• 해시태그 ID: 17843857450077043\n"
+        )
+        mock_top = MagicMock()
+        mock_top.invoke.return_value = "### [누적 인기글 (top_media)] 5건 수집 완료"
+
+        tools = {
+            "get_competitor_profile": mock_get_competitor_profile,
+            "search_hashtag_id": mock_search,
+            "get_hashtag_top_media": mock_top,
+        }
+        params = CompetitorMessageShiftParams(
+            competitor_username="재슐랭가이드",
+            category_keyword="성남 맛집",
+        )
+        output = scen.execute(params=params, tools=tools)
+
+        # 1. search_hashtag_id가 정규화된 키워드로 호출되었는지 검증
+        mock_search.invoke.assert_called_once_with({"query": "성남맛집"})
+
+        # 2. 파싱된 실제 숫자 해시태그 ID가 get_hashtag_top_media에 전달되었는지 검증
+        mock_top.invoke.assert_called_once_with({"hashtag_id": "17843857450077043"})
+
 
 class TestScenarioRegistryDiscovery:
     """ScenarioRegistry가 신규 인스타그램 시나리오 3종을 자동 발견하는지 검증."""
@@ -325,6 +451,29 @@ class TestScenarioParameterCoercion:
         # 5. None 또는 빈 문자열 전달 시 기본값 유지
         p5 = HashtagSurgeDetectionParams(compare_hashtags="")
         assert p5.compare_hashtags == ["#성남 맛집", "#분당 맛집", "#판교 맛집"]
+
+        # 6. hours_range 파싱 및 기본값 24시간 검증
+        # 6-1. 사용자 미언급 시 기본값 24
+        p6 = HashtagSurgeDetectionParams()
+        assert p6.hours_range == 24
+
+        # 6-2. 문자열 형태(예: '6시간', '12') 전달 시 숫자로 자동 변환
+        p7 = HashtagSurgeDetectionParams(hours_range="6시간")
+        assert p7.hours_range == 6
+
+        p8 = HashtagSurgeDetectionParams(hours_range="12")
+        assert p8.hours_range == 12
+
+        # 6-3. None / 빈 문자열 / PydanticUndefined 시 기본값 24
+        p9 = HashtagSurgeDetectionParams(hours_range="PydanticUndefined")
+        assert p9.hours_range == 24
+
+        p10 = HashtagSurgeDetectionParams(hours_range=None)
+        assert p10.hours_range == 24
+
+        # 6-4. 음수나 0 입력 시 기본값 24로 방어
+        p11 = HashtagSurgeDetectionParams(hours_range=-3)
+        assert p11.hours_range == 24
 
     def test_competitor_campaign_tracking_params_coercion(self):
         # 1. PydanticUndefined 문자열 전달 시 기본값 리스트로 안전 복구

@@ -5,6 +5,7 @@
 # ==============================================================================
 
 import json
+from datetime import datetime, timedelta, timezone
 from langchain_core.tools import tool
 from .client import InstagramApiClient
 
@@ -23,7 +24,7 @@ def search_hashtag_id(query: str) -> str:
     normalized_query = raw_query.lstrip("#").replace(" ", "")
 
     normalization_notice = (
-        f"[정규화 안내] 입력값 '{raw_query}'에서 '#'과 공백을 제거하여 "
+        f"[정규화 안내] 검색어 '{raw_query}'에서 '#'과 공백을 제거하여 "
         f"'q={normalized_query}'로 인스타그램 해시태그 ID를 조회합니다."
     )
 
@@ -33,70 +34,104 @@ def search_hashtag_id(query: str) -> str:
         if not items:
             return (
                 f"{normalization_notice}\n"
-                f"해시태그 '{normalized_query}'에 대한 ID를 찾을 수 없습니다.\n"
-                f"※ 안내: Instagram Graph API는 7일 롤링 기간 동안 최대 30개의 해시태그만 조회할 수 있습니다."
+                f"해시태그 '{normalized_query}'에 대한 ID를 찾을 수 없습니다."
             )
-
-        hashtag_id = items[0].get("id")
-        tag_name = items[0].get("name", normalized_query)
-
+        first_item = items[0]
+        ht_id = first_item.get("id")
+        ht_name = first_item.get("name")
         return (
             f"{normalization_notice}\n"
-            f"• 해시태그명: #{tag_name}\n"
-            f"• 해시태그 ID: {hashtag_id}\n\n"
-            f"※ 제약 안내:\n"
-            f"1. 해시태그 쿼터 제한: 7일 롤링 30개 초과 시 조회가 제한됩니다.\n"
-            f"2. 작성자 정보 미포함: 해시태그 조회 결과에는 작성자 계정/가게 정보가 포함되지 않으므로 임의 추측하지 마십시오."
+            f"• 해시태그: #{ht_name}\n"
+            f"• 해시태그 ID: {ht_id}\n"
+            f"※ 쿼터 안내: Instagram Graph API는 7일 롤링 기간 동안 최대 30개의 고유 해시태그를 조회할 수 있습니다."
         )
     except Exception as e:
         return f"{normalization_notice}\n해시태그 ID 검색 실패: {str(e)}"
 
 
+def _format_media_list(items: list) -> tuple[list[str], int, int]:
+    lines = []
+    total_likes = 0
+    total_comments = 0
+    for idx, it in enumerate(items, 1):
+        likes = it.get("like_count", 0)
+        comments = it.get("comments_count", 0)
+        total_likes += likes
+        total_comments += comments
+        caption = it.get("caption", "내용 없음").replace("\n", " ")
+        short_caption = caption[:70] + "..." if len(caption) > 70 else caption
+        lines.append(
+            f"  {idx}. [ID: {it.get('id')}] 좋아요: {likes:,}개 | 댓글: {comments:,}개 | 타입: {it.get('media_type')}\n"
+            f"     - 캡션: \"{short_caption}\"\n"
+            f"     - 링크: {it.get('permalink')}\n"
+            f"     - 시간: {it.get('timestamp')}"
+        )
+    return lines, total_likes, total_comments
+
+
 @tool
-def get_hashtag_recent_media(hashtag_id: str) -> str:
-    """지정된 해시태그 ID의 '최근 유입 게시물(recent_media, 현재 24시간 온도)' 목록을 조회합니다.
+def get_hashtag_recent_media(hashtag_id: str, hours_range: int = 24) -> str:
+    """지정된 해시태그 ID의 '최근 유입 게시물(recent_media, 현재 시간대 온도)' 목록을 조회합니다.
+    사용자가 지정한 시간 범위(기본값: 24시간, 최대 24시간) 내 게시물을 필터링하여 분석합니다.
     최신글과 인기글은 엄격히 구분되며, 24시간 이전의 장기 시계열 추이는 제공되지 않습니다.
 
     Args:
         hashtag_id: search_hashtag_id로 획득한 해시태그 고유 ID
+        hours_range: 분석 대상 시간 범위 (단위: 시간, 기본값: 24). 미언급 시 24시간 적용.
     """
     try:
+        effective_hours = hours_range if (isinstance(hours_range, int) and hours_range > 0) else 24
+        capped_hours = min(effective_hours, 24)
+        hours_capped_notice = ""
+        if effective_hours > 24:
+            hours_capped_notice = (
+                f"\n※ 시간 범위 고지: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 이내 게시물만 제공하므로, "
+                f"요청하신 {effective_hours}시간 범위 대신 API 최대 한도인 24시간으로 조회되었습니다."
+            )
+
         data = client.get_hashtag_recent_media(hashtag_id)
         items = data.get("data", [])
         if not items:
             return (
-                f"해시태그 ID({hashtag_id})의 최근 24시간 내 게시물이 없습니다.\n"
-                f"※ 통계 안내: 최근 24시간 게시물 수가 0건이므로 급상승 여부를 통계적으로 판단할 수 없습니다."
+                f"해시태그 ID({hashtag_id})의 최근 {capped_hours}시간 내 게시물이 없습니다.\n"
+                f"※ 통계 안내: 최근 {capped_hours}시간 게시물 수가 0건이므로 급상승 여부를 통계적으로 판단할 수 없습니다.{hours_capped_notice}"
             )
 
+        # 24시간 미만(예: 6시간, 12시간) 필터링
+        filtered_items = items
+        if capped_hours < 24 and items:
+            parsed_entries = []
+            for it in items:
+                ts_str = it.get("timestamp")
+                dt = None
+                if ts_str:
+                    try:
+                        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if dt.tzinfo is None:
+                            dt = dt.replace(tzinfo=timezone.utc)
+                    except Exception:
+                        pass
+                parsed_entries.append((dt, it))
+
+            valid_dts = [entry[0] for entry in parsed_entries if entry[0] is not None]
+            if valid_dts:
+                cutoff = max(valid_dts) - timedelta(hours=capped_hours)
+                filtered_items = [entry[1] for entry in parsed_entries if entry[0] is not None and entry[0] >= cutoff]
+
+        media_lines, total_likes, total_comments = _format_media_list(filtered_items)
         lines = [
             f"### [최신글 (recent_media)] 해시태그 ID: {hashtag_id}",
-            f"• 수집 건수: {len(items)}건 (최근 24시간 윈도우 한정)",
+            f"• 수집 건수: {len(filtered_items)}건 (최근 {capped_hours}시간 윈도우 한정)",
             "• 게시물 목록:",
+            *media_lines,
         ]
 
-        total_likes = 0
-        total_comments = 0
-        for idx, it in enumerate(items, 1):
-            likes = it.get("like_count", 0)
-            comments = it.get("comments_count", 0)
-            total_likes += likes
-            total_comments += comments
-            caption = it.get("caption", "내용 없음").replace("\n", " ")
-            short_caption = caption[:70] + "..." if len(caption) > 70 else caption
-            lines.append(
-                f"  {idx}. [ID: {it.get('id')}] 좋아요: {likes:,}개 | 댓글: {comments:,}개 | 타입: {it.get('media_type')}\n"
-                f"     - 캡션: \"{short_caption}\"\n"
-                f"     - 링크: {it.get('permalink')}\n"
-                f"     - 시간: {it.get('timestamp')}"
-            )
-
-        avg_eng = (total_likes + total_comments) / len(items)
-        lines.append(f"\n• 최근 24시간 평균 참여도 (좋아요+댓글): {avg_eng:.2f}")
+        avg_eng = (total_likes + total_comments) / len(filtered_items) if filtered_items else 0.0
+        lines.append(f"\n• 최근 {capped_hours}시간 평균 참여도 (좋아요+댓글): {avg_eng:.2f}")
 
         sample_notice = ""
-        if len(items) < 5:
-            sample_notice = "\n⚠️ [표본 유의] 24시간 내 게시물 수가 5건 미만으로 적어 통계적 급상승을 단정하기에 표본이 부족합니다."
+        if len(filtered_items) < 5:
+            sample_notice = f"\n⚠️ [표본 유의] {capped_hours}시간 내 게시물 수가 5건 미만으로 적어 통계적 급상승을 단정하기에 표본이 부족합니다."
 
         disclaimer = (
             "\n※ API 제약 고지:\n"
@@ -104,7 +139,7 @@ def get_hashtag_recent_media(hashtag_id: str) -> str:
             "2. 게시물 작성자 정보는 포함되지 않으므로 특정 상호나 계정을 임의로 단정할 수 없습니다."
         )
 
-        return "\n".join(lines) + sample_notice + disclaimer
+        return "\n".join(lines) + sample_notice + disclaimer + hours_capped_notice
     except Exception as e:
         return f"해시태그 최신글 조회 실패: {str(e)}"
 
@@ -122,27 +157,13 @@ def get_hashtag_top_media(hashtag_id: str) -> str:
         if not items:
             return f"해시태그 ID({hashtag_id})의 인기 게시물 결과가 없습니다."
 
+        media_lines, total_likes, total_comments = _format_media_list(items)
         lines = [
             f"### [누적 인기글 (top_media - 비교 기준선)] 해시태그 ID: {hashtag_id}",
             f"• 수집 건수: {len(items)}건",
             "• 기준선 게시물 목록:",
+            *media_lines,
         ]
-
-        total_likes = 0
-        total_comments = 0
-        for idx, it in enumerate(items, 1):
-            likes = it.get("like_count", 0)
-            comments = it.get("comments_count", 0)
-            total_likes += likes
-            total_comments += comments
-            caption = it.get("caption", "내용 없음").replace("\n", " ")
-            short_caption = caption[:70] + "..." if len(caption) > 70 else caption
-            lines.append(
-                f"  {idx}. [ID: {it.get('id')}] 좋아요: {likes:,}개 | 댓글: {comments:,}개 | 타입: {it.get('media_type')}\n"
-                f"     - 캡션: \"{short_caption}\"\n"
-                f"     - 링크: {it.get('permalink')}\n"
-                f"     - 시간: {it.get('timestamp')}"
-            )
 
         avg_eng = (total_likes + total_comments) / len(items)
         lines.append(f"\n• 누적 인기글 평균 참여도 기준선 (좋아요+댓글): {avg_eng:.2f}")

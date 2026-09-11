@@ -1,1 +1,1 @@
-# cross_platform_trend scenario package
+# 크로스 플랫폼 트렌드 분석 시나리오 패키지

@@ -16,6 +16,31 @@ from src.core.scenario import BaseScenario
 logger = logging.getLogger(__name__)
 
 
+def _coerce_list(v: Any, default: List[str]) -> List[str]:
+    if not v or v == "PydanticUndefined":
+        return default
+    if isinstance(v, str):
+        v = v.strip()
+        if not v or v == "PydanticUndefined":
+            return default
+        if v.startswith("[") and v.endswith("]"):
+            try:
+                loaded = json.loads(v)
+                if isinstance(loaded, list):
+                    return [str(x).strip() for x in loaded if str(x).strip()]
+            except Exception:
+                pass
+        return [u.strip() for u in v.split(",") if u.strip()]
+    if isinstance(v, (list, tuple)):
+        return [str(u).strip() for u in v if str(u).strip()]
+    return default
+
+
+def _parse_int(pattern: str, text: str, default: int) -> int:
+    m = re.search(pattern, text)
+    return int(m.group(1).replace(",", "")) if m else default
+
+
 # ------------------------------------------------------------------------------
 # 🔴 [Pydantic 스키마 정의]
 # ------------------------------------------------------------------------------
@@ -34,24 +59,7 @@ class CompetitorCampaignTrackingParams(BaseModel):
     @field_validator("competitor_usernames", mode="before")
     @classmethod
     def parse_competitor_usernames(cls, v: Any) -> List[str]:
-        default_list = ["재슐랭가이드", "미식맨"]
-        if v is None:
-            return default_list
-        if isinstance(v, str):
-            v_clean = v.strip()
-            if not v_clean or v_clean == "PydanticUndefined":
-                return default_list
-            if v_clean.startswith("[") and v_clean.endswith("]"):
-                try:
-                    loaded = json.loads(v_clean)
-                    if isinstance(loaded, list):
-                        return [str(x).strip() for x in loaded if str(x).strip()]
-                except Exception:
-                    pass
-            return [u.strip() for u in v_clean.split(",") if u.strip()]
-        if isinstance(v, (list, tuple)):
-            return [str(u).strip() for u in v if str(u).strip()]
-        return v
+        return _coerce_list(v, ["재슐랭가이드", "미식맨"])
 
 
 class CompetitorStats(BaseModel):
@@ -114,13 +122,8 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
         """ISO 8601 타임스탬프 파싱."""
         if not ts_str:
             return None
-        cleaned = ts_str.strip()
         try:
-            if cleaned.endswith("Z"):
-                cleaned = cleaned[:-1] + "+00:00"
-            elif re.search(r"\+\d{4}$", cleaned):
-                cleaned = cleaned[:-4] + "+" + cleaned[-4:-2] + ":" + cleaned[-2:]
-            return datetime.fromisoformat(cleaned)
+            return datetime.fromisoformat(ts_str.strip())
         except Exception:
             return None
 
@@ -179,7 +182,6 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
         competitor_list = params.competitor_usernames or ["재슐랭가이드", "미식맨"]
 
         competitors_stats: List[CompetitorStats] = []
-        raw_outputs: Dict[str, str] = {}
 
         for user in competitor_list:
             clean_user = user.strip().lstrip("@")
@@ -191,12 +193,11 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
                 try:
                     tool_res = profile_tool.invoke({"username": clean_user})
                     tool_res_str = str(tool_res)
-                    raw_outputs[clean_user] = tool_res_str
                 except Exception as e:
                     logger.warning("경쟁사 프로필 조회 실패 (%s): %s", clean_user, e)
                     tool_res_str = f"조회 실패: {e}"
 
-            # 1. 공식 계정 Bio / Website 파싱
+            # 1. 공식 계정 소개글(Bio) 및 웹사이트(Web) 파싱
             bio_match = re.search(r'Bio="([^"]+)"', tool_res_str)
             web_match = re.search(r'Web="([^"]+)"', tool_res_str)
             bio = bio_match.group(1) if bio_match else ""
@@ -207,15 +208,10 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
             official_evidence = f"Bio: '{bio}' | Website: '{web}'"
 
             # 2. 팔로워 / 팔로우 / 미디어 수
-            fol_match = re.search(r"팔로워:\s*([\d,]+)명", tool_res_str)
-            follows_match = re.search(r"팔로우:\s*([\d,]+)명", tool_res_str)
-            tot_media_match = re.search(r"총 게시물:\s*([\d,]+)개", tool_res_str)
-            ret_media_match = re.search(r"수집된 최근 게시물:\s*(\d+)건", tool_res_str)
-
-            followers = int(fol_match.group(1).replace(",", "")) if fol_match else 50000
-            follows = int(follows_match.group(1).replace(",", "")) if follows_match else 200
-            tot_media = int(tot_media_match.group(1).replace(",", "")) if tot_media_match else 100
-            ret_media = int(ret_media_match.group(1)) if ret_media_match else 3
+            followers = _parse_int(r"팔로워:\s*([\d,]+)명", tool_res_str, 50000)
+            follows = _parse_int(r"팔로우:\s*([\d,]+)명", tool_res_str, 200)
+            tot_media = _parse_int(r"총 게시물:\s*([\d,]+)개", tool_res_str, 100)
+            ret_media = _parse_int(r"수집된 최근 게시물:\s*(\d+)건", tool_res_str, 3)
 
             # 3. 타임스탬프 추출 및 실제 빈도 계산
             ts_json_match = re.search(r"게시물 타임스탬프 목록 \(빈도 계산용\):\s*(\[[^\]]+\])", tool_res_str)
@@ -238,13 +234,23 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
             # 참여율 = ((평균좋아요 + 평균댓글) / 팔로워수) * 100
             eng_rate = ((avg_likes + avg_comments) / followers) * 100 if followers > 0 else 0.0
 
-            # 5. 타깃 토픽 관련 키워드 추출
+            # 5. 타깃 토픽 및 캡션 내 실제 해시태그 기반 키워드 동적 추출
             topic_keywords = []
             if params.target_topic and params.target_topic in tool_res_str:
                 topic_keywords.append(params.target_topic)
-            for kw in ["성남", "분당", "판교", "맛집", "회식", "파스타", "카페"]:
-                if kw in tool_res_str and kw not in topic_keywords:
-                    topic_keywords.append(kw)
+
+            # 캡션 내 실제 해시태그(#...) 추출 (광고/협찬 표기 및 시스템 태그 제외)
+            extracted_hashtags = re.findall(r"#([a-zA-Z0-9가-힣_]+)", tool_res_str)
+            for tag in extracted_hashtags:
+                if tag in ["광고", "협찬", "AD", "ad", "Fallback", "Mock"]:
+                    continue
+                if tag not in topic_keywords:
+                    topic_keywords.append(tag)
+                if len(topic_keywords) >= 8:
+                    break
+
+            if not topic_keywords and params.target_topic:
+                topic_keywords.append(params.target_topic)
 
             competitors_stats.append(
                 CompetitorStats(
@@ -267,7 +273,7 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
                 )
             )
 
-        # 필수 준수 Disclaimers
+        # 필수 준수 고지사항 (Disclaimers)
         disclaimers = [
             "조회수(View count)는 Instagram Graph API의 business_discovery에서 타 계정 미디어에 일절 제공하지 않는 지표이므로, 조회수/재생수 수치는 생성하지 않고 좋아요/댓글 기반 참여율로 대체 분석하였습니다.",
             "계정 username은 절대 추측하지 않으며, API 응답으로 확인된 공식 핸들만 조회 대상으로 보고합니다. 확인되지 않는 계정은 사용자에게 확인을 요청합니다.",

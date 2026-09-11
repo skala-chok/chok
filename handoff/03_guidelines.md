@@ -70,7 +70,8 @@
 
 1. **100% Mocking 적용 (외부 통신 격리)**:
    - 단위 테스트(`tests/modules/`) 및 코어 테스트(`tests/core/`)는 **인터넷 연결이 끊긴 환경에서도 100% 통과**해야 합니다.
-   - 실제 외부 API를 직접 호출하는 라이브 테스트는 `tests/api_test.py`에 별도로 분리하고, 기본 단위/통합 테스트에서는 반드시 `unittest.mock.patch`를 통해 Mock 응답을 반환해야 합니다.
+   - 실제 외부 API를 직접 호출하는 라이브 진단 스크립트는 `scripts/api_diagnostics.py`에 별도로 분리하고, `tests/` 단위/통합 테스트에서는 반드시 `unittest.mock.patch`를 통해 100% Mock 응답을 반환해야 합니다.
+
 2. **테스트 파괴 금지**:
    - 신규 기능 추가 또는 리팩토링 후 기존 130개 이상의 단위 테스트가 실패해서는 안 됩니다.
    - PR 제출 전 `./venv/bin/pytest tests/modules/ tests/core/`를 실행하여 기존 테스트 스위트의 무결성을 반드시 확인해야 합니다. 
