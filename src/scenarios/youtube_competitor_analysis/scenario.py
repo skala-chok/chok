@@ -4,7 +4,7 @@ import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
 from statistics import median
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Type
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
@@ -217,9 +217,11 @@ def _topic_labels(channel: ChannelAnalysis) -> str:
     return ", ".join(f"{topic} {channel.topic_counts.get(topic, 0)}개 영상" for topic in channel.recurring_topics)
 
 
-def _table(headers: Sequence[str], aligns: Sequence[str], rows: Iterable[Sequence[str]]) -> str:
+def _table(headers: Sequence[str], rows: Iterable[Sequence[str]], aligns: Optional[Sequence[str]] = None) -> str:
+    if aligns is None:
+        aligns = [":---"] * len(headers)
     lines = [f"| {' | '.join(headers)} |", f"| {' | '.join(aligns)} |"]
-    lines.extend(f"| {' | '.join(row)} |" for row in rows)
+    lines.extend(f"| {' | '.join(str(c) for c in r)} |" for r in rows)
     return "\n".join(lines)
 
 
@@ -234,7 +236,7 @@ def _video_link(video: Optional[VideoEvidence]) -> str:
 
 
 def _top_video(videos: Sequence[VideoEvidence]) -> Optional[VideoEvidence]:
-    return max(videos, key=lambda video: (video.engagement_rate, video.views)) if videos else None
+    return max(videos, key=lambda v: (v.engagement_rate, v.views)) if videos else None
 
 
 # ------------------------------------------------------------------------------
@@ -267,52 +269,32 @@ def _evidence(videos: List[Dict[str, Any]], metrics: List[Dict[str, Any]]) -> Li
 
 
 def _strip_particle(token: str) -> str:
-    """한국어 조사를 최대 2회까지 제거해 같은 주제어가 분산 집계되지 않게 합니다."""
     for _ in range(2):
-        if len(token) >= 3 and token[-1] in TOPIC_PARTICLES and re.fullmatch(r"[가-힣]+", token):
+        if len(token) >= 3 and token[-1] in TOPIC_PARTICLES:
             token = token[:-1]
-        else:
-            break
     return token
 
 
 def _topics(videos: List[Dict[str, Any]], company: str = "") -> Tuple[List[str], Dict[str, int]]:
-    """제목·설명에서 2개 이상 영상에 공통 등장한 주제어만 추출합니다.
-
-    불용어, 숫자, 조사, 분석 대상명, 메시지/CTA 사전 중복 토큰을 제거해 주제 축만 남깁니다.
-    집계 단위는 '해당 토큰이 등장한 영상 수'이므로 한 영상의 반복 사용이 순위를 왜곡하지 않습니다.
-    2개 이상 영상에 등장한 토큰이 없으면 빈 결과를 돌려 표본 부족임을 드러냅니다.
-
-    Args:
-        videos: 원본 영상 딕셔너리 목록.
-        company: 분석 대상명. 대상명 자체는 주제어에서 제외합니다.
-
-    Returns:
-        (상위 키워드 목록, 키워드별 등장 영상 수) 튜플.
-    """
     owner = company.lower().strip()
     counts: Counter = Counter()
     for item in videos:
         text = f"{item.get('title', '')} {item.get('description', '')}".lower()
-        tokens = set()
-        for raw in re.findall(r"[A-Za-z가-힣0-9]{2,}", text):
-            token = _strip_particle(raw)
-            if len(token) < 2 or token.isdigit():
-                continue
-            if token in TOPIC_STOPWORDS or token in MESSAGE_LEXICON or token in CTA_LEXICON:
-                continue
-            if owner and (token in owner or owner in token):
-                continue
-            tokens.add(token)
-        counts.update(tokens)
-    ranked = [(token, count) for token, count in counts.most_common() if count >= 2][:6]
-    return [token for token, _ in ranked], dict(ranked)
+        seen = {
+            t for raw in re.findall(r"[가-힣A-Za-z0-9]{2,}", text)
+            if (t := _strip_particle(raw))
+            and len(t) >= 2 and not t.isdigit()
+            and t not in TOPIC_STOPWORDS and t not in MESSAGE_LEXICON and t not in CTA_LEXICON
+            and (not owner or (t not in owner and owner not in t))
+        }
+        counts.update(seen)
+    ranked = [(k, v) for k, v in counts.most_common(6) if v >= 2]
+    return [k for k, _ in ranked], dict(ranked)
 
 
 def _activity(videos: List[Dict[str, Any]], company: str = "") -> Dict[str, Any]:
     timestamps = [moment for moment in (_parse_time(item.get("published_at", "")) for item in videos) if moment]
-    weekly = 0.0
-    surge = False
+    weekly, surge = 0.0, False
     if len(timestamps) >= 2:
         timestamps.sort()
         days = max(1, (timestamps[-1] - timestamps[0]).days)
@@ -329,18 +311,15 @@ def _activity(videos: List[Dict[str, Any]], company: str = "") -> Dict[str, Any]
 
 
 def _week_sequence(start: Tuple[int, int, int], end: Tuple[int, int, int]) -> List[Tuple[int, int, int]]:
-    """업로드가 없는 주차도 0건으로 채워 추이가 끊기지 않게 합니다."""
-    sequence = []
-    cursor = start
-    while cursor <= end and len(sequence) < MAX_TIMELINE_ROWS:
-        sequence.append(cursor)
-        year, month, week = cursor
-        cursor = (year, month, week + 1) if week < 5 else (year + 1, 1, 1) if month == 12 else (year, month + 1, 1)
-    return sequence if end in sequence else sorted({*sequence, end})
+    seq, cur = [], start
+    while cur <= end and len(seq) < MAX_TIMELINE_ROWS:
+        seq.append(cur)
+        y, m, w = cur
+        cur = (y, m, w + 1) if w < 5 else (y + 1, 1, 1) if m == 12 else (y, m + 1, 1)
+    return seq if end in seq else sorted({*seq, end})
 
 
 def _weekly_timeline(evidence: List[VideoEvidence]) -> List[WeeklyPoint]:
-    """게시일을 주차로 묶어 업로드량과 반응 중앙값 추이를 만듭니다."""
     buckets: Dict[Tuple[int, int, int], List[VideoEvidence]] = defaultdict(list)
     for video in evidence:
         moment = _parse_time(video.published_at)
@@ -354,15 +333,14 @@ def _weekly_timeline(evidence: List[VideoEvidence]) -> List[WeeklyPoint]:
         timeline.append(WeeklyPoint(
             week=f"{month}월 {week}주",
             uploads=len(items),
-            median_views=_median(video.views for video in items),
-            median_engagement_rate=_median(video.engagement_rate for video in items),
-            median_daily_views=_median(video.daily_average_views for video in items),
+            median_views=_median(v.views for v in items),
+            median_engagement_rate=_median(v.engagement_rate for v in items),
+            median_daily_views=_median(v.daily_average_views for v in items),
         ))
     return timeline
 
 
 def _format_performance(evidence: List[VideoEvidence]) -> List[FormatPerformance]:
-    """형식별 반응을 집계해 Shorts/롱폼 중 무엇이 반응을 얻는지 보여줍니다."""
     buckets: Dict[str, List[VideoEvidence]] = defaultdict(list)
     for video in evidence:
         buckets[video.content_format].append(video)
@@ -370,9 +348,9 @@ def _format_performance(evidence: List[VideoEvidence]) -> List[FormatPerformance
         FormatPerformance(
             content_format=name,
             videos=len(items),
-            median_views=_median(video.views for video in items),
-            median_engagement_rate=_median(video.engagement_rate for video in items),
-            median_daily_views=_median(video.daily_average_views for video in items),
+            median_views=_median(v.views for v in items),
+            median_engagement_rate=_median(v.engagement_rate for v in items),
+            median_daily_views=_median(v.daily_average_views for v in items),
         )
         for name, items in buckets.items()
     ]
@@ -394,8 +372,8 @@ def _ad_trend_signals(
     change_pct = 0.0
     if len(ordered) >= 4:
         midpoint = len(ordered) // 2
-        older = _median(video.daily_average_views for video in ordered[:midpoint])
-        newer = _median(video.daily_average_views for video in ordered[midpoint:])
+        older = _median(v.daily_average_views for v in ordered[:midpoint])
+        newer = _median(v.daily_average_views for v in ordered[midpoint:])
         change_pct = round((newer - older) / older * 100, 1) if older > 0 else 0.0
         fatigue = "possible fatigue" if newer < older * 0.7 else "recent response stronger" if newer > older * 1.3 else "stable"
     return {
@@ -419,12 +397,11 @@ def _trend_label(channel: ChannelAnalysis) -> str:
     return f"{label} ({channel.response_change_pct:+.1f}%)"
 
 
-def _gap(first: ChannelAnalysis, second: ChannelAnalysis, first_value: float, second_value: float, kind: str) -> str:
-    """2자 비교 시 어느 쪽이 얼마나 앞서는지 한 칸으로 표기합니다."""
-    if first_value == second_value:
+def _gap(first: ChannelAnalysis, second: ChannelAnalysis, first_val: float, second_val: float, kind: str) -> str:
+    if first_val == second_val:
         return "동일"
-    leader = first.company if first_value > second_value else second.company
-    high, low = max(first_value, second_value), min(first_value, second_value)
+    leader = first.company if first_val > second_val else second.company
+    high, low = max(first_val, second_val), min(first_val, second_val)
     if kind == "count":
         return f"{_cell(leader, 16)} +{high - low:,.0f}건"
     if kind == "points":
@@ -433,91 +410,69 @@ def _gap(first: ChannelAnalysis, second: ChannelAnalysis, first_value: float, se
 
 
 def _overview_block(report: YouTubeReport) -> str:
-    """다채널이면 지표 행 × 대상 열 비교표, 단일이면 항목·값 요약표를 만듭니다."""
     channels = report.channels
     if not channels:
         return ""
-    metrics: List[Tuple[str, str, Any]] = [
-        ("분석 영상", "count", lambda channel: float(len(channel.videos))),
-        ("중앙 조회수", "ratio", lambda channel: _median(video.views for video in channel.videos)),
-        ("중앙 참여율", "points", lambda channel: _median(video.engagement_rate for video in channel.videos)),
-        ("중앙 일평균 조회수", "ratio", lambda channel: _median(video.daily_average_views for video in channel.videos)),
-        ("주당 업로드(관측 구간)", "ratio", lambda channel: channel.weekly_upload_frequency),
+    metrics = [
+        ("분석 영상", lambda c: f"{len(c.videos):,}건", "count", lambda c: float(len(c.videos))),
+        ("중앙 조회수", lambda c: _compact(_median(v.views for v in c.videos)), "ratio", lambda c: _median(v.views for v in c.videos)),
+        ("중앙 참여율", lambda c: _percent(_median(v.engagement_rate for v in c.videos)), "points", lambda c: _median(v.engagement_rate for v in c.videos)),
+        ("중앙 일평균 조회수", lambda c: _compact(_median(v.daily_average_views for v in c.videos)), "ratio", lambda c: _median(v.daily_average_views for v in c.videos)),
+        ("주당 업로드(관측 구간)", lambda c: f"{c.weekly_upload_frequency:.2f}회", "ratio", lambda c: c.weekly_upload_frequency),
     ]
-    renderers = {
-        "분석 영상": lambda value: f"{value:,.0f}건",
-        "중앙 조회수": _compact,
-        "중앙 참여율": _percent,
-        "중앙 일평균 조회수": _compact,
-        "주당 업로드(관측 구간)": lambda value: f"{value:.2f}회",
-    }
     if len(channels) == 1:
-        channel = channels[0]
-        rows = [[label, renderers[label](getter(channel))] for label, _, getter in metrics]
+        c = channels[0]
+        rows = [[label, renderer(c)] for label, renderer, _, _ in metrics]
         rows.extend([
-            ["형식 구성", _cell(_count_labels(dict(Counter(video.content_format for video in channel.videos))), 60)],
-            ["최근 업로드 급증", "예" if channel.recent_upload_surge else "아니오"],
-            ["반응 추세", _trend_label(channel)],
-            ["최고 반응 영상", _video_link(_top_video(channel.videos))],
+            ["형식 구성", _cell(_count_labels(dict(Counter(v.content_format for v in c.videos))), 60)],
+            ["최근 업로드 급증", "예" if c.recent_upload_surge else "아니오"],
+            ["반응 추세", _trend_label(c)],
+            ["최고 반응 영상", _video_link(_top_video(c.videos))],
         ])
-        return _table(["항목", "값"], [":---", ":---"], rows)
+        return _table(["항목", "값"], rows)
 
-    headers = ["지표"] + [_cell(channel.company, 16) for channel in channels]
+    headers = ["지표"] + [_cell(c.company, 16) for c in channels]
     aligns = [":---"] + ["---:"] * len(channels)
     if len(channels) == 2:
         headers.append("격차")
         aligns.append(":---")
     rows = []
-    for label, kind, getter in metrics:
-        values = [getter(channel) for channel in channels]
-        row = [label] + [renderers[label](value) for value in values]
+    for label, renderer, kind, val_fn in metrics:
+        row = [label] + [renderer(c) for c in channels]
         if len(channels) == 2:
-            row.append(_gap(channels[0], channels[1], values[0], values[1], kind))
+            row.append(_gap(channels[0], channels[1], val_fn(channels[0]), val_fn(channels[1]), kind))
         rows.append(row)
-    extra: List[Tuple[str, Any]] = [
-        ("형식 구성", lambda channel: _cell(_count_labels(dict(Counter(video.content_format for video in channel.videos))), 40)),
-        ("최근 업로드 급증", lambda channel: "예" if channel.recent_upload_surge else "아니오"),
+    extra = [
+        ("형식 구성", lambda c: _cell(_count_labels(dict(Counter(v.content_format for v in c.videos))), 40)),
+        ("최근 업로드 급증", lambda c: "예" if c.recent_upload_surge else "아니오"),
         ("반응 추세", _trend_label),
-        ("최고 반응 영상", lambda channel: _video_link(_top_video(channel.videos))),
+        ("최고 반응 영상", lambda c: _video_link(_top_video(c.videos))),
     ]
-    for label, getter in extra:
-        row = [label] + [getter(channel) for channel in channels]
+    for label, fn in extra:
+        row = [label] + [fn(c) for c in channels]
         if len(channels) == 2:
             row.append("-")
         rows.append(row)
-    return _table(headers, aligns, rows)
+    return _table(headers, rows, aligns)
 
 
 def _timeline_block(report: YouTubeReport) -> str:
-    """주차별 업로드량과 반응 중앙값, 전주 대비 변화를 표로 만듭니다."""
     sections = []
     multi = len(report.channels) > 1
     for channel in report.channels:
-        timeline = channel.weekly_timeline
-        if not timeline:
+        if not channel.weekly_timeline:
             continue
         rows = []
-        previous = 0.0
-        for point in timeline:
-            if not point.uploads:
-                rows.append([point.week, "0건", "-", "-", "-", "업로드 없음"])
+        prev = 0.0
+        for p in channel.weekly_timeline:
+            if not p.uploads:
+                rows.append([p.week, "0건", "-", "-", "-", "업로드 없음"])
                 continue
-            change = _delta(point.median_daily_views, previous) if previous else "기준 주차"
-            rows.append([
-                point.week,
-                f"{point.uploads}건",
-                _compact(point.median_views),
-                _percent(point.median_engagement_rate),
-                _compact(point.median_daily_views),
-                change,
-            ])
-            previous = point.median_daily_views
-        table = _table(
-            ["주차", "업로드", "중앙 조회수", "중앙 참여율", "중앙 일평균 조회수", "전주 대비"],
-            [":---", "---:", "---:", "---:", "---:", ":---"],
-            rows,
-        )
-        sections.append(f"#### {_cell(channel.company, 30)}\n\n{table}" if multi else table)
+            change = _delta(p.median_daily_views, prev) if prev else "기준 주차"
+            rows.append([p.week, f"{p.uploads}건", _compact(p.median_views), _percent(p.median_engagement_rate), _compact(p.median_daily_views), change])
+            prev = p.median_daily_views
+        t = _table(["주차", "업로드", "중앙 조회수", "중앙 참여율", "중앙 일평균 조회수", "전주 대비"], rows, [":---", "---:", "---:", "---:", "---:", ":---"])
+        sections.append(f"#### {_cell(channel.company, 30)}\n\n{t}" if multi else t)
     return "\n\n".join(sections)
 
 
@@ -525,169 +480,111 @@ def _format_block(report: YouTubeReport) -> str:
     multi = len(report.channels) > 1
     headers = (["대상"] if multi else []) + ["형식", "영상 수", "중앙 조회수", "중앙 참여율", "중앙 일평균 조회수"]
     aligns = ([":---"] if multi else []) + [":---", "---:", "---:", "---:", "---:"]
-    rows = []
-    for channel in report.channels:
-        for item in channel.format_performance:
-            rows.append((([_cell(channel.company, 16)] if multi else []) + [
-                item.content_format,
-                f"{item.videos}건",
-                _compact(item.median_views),
-                _percent(item.median_engagement_rate),
-                _compact(item.median_daily_views),
-            ]))
-    return _table(headers, aligns, rows) if rows else ""
+    rows = [
+        ([_cell(c.company, 16)] if multi else []) + [
+            item.content_format, f"{item.videos}건", _compact(item.median_views),
+            _percent(item.median_engagement_rate), _compact(item.median_daily_views),
+        ]
+        for c in report.channels for item in c.format_performance
+    ]
+    return _table(headers, rows, aligns) if rows else ""
 
 
 def _signal_block(report: YouTubeReport) -> str:
     multi = len(report.channels) > 1
     headers = (["대상"] if multi else []) + ["반복 주제", "반복 메시지", "CTA 신호", "채널 구성"]
-    aligns = ([":---"] if multi else []) + [":---", ":---", ":---", ":---"]
-    rows = []
-    for channel in report.channels:
-        rows.append((([_cell(channel.company, 16)] if multi else []) + [
-            _cell(_topic_labels(channel), 60),
-            _cell(", ".join(channel.message_signals) or "확인 불가", 40),
-            _cell(", ".join(channel.cta_signals) or "확인 불가", 40),
-            _cell(_count_labels(channel.creator_vs_brand_mix, ORIGIN_LABELS), 40),
-        ]))
-    return _table(headers, aligns, rows) if rows else ""
+    rows = [
+        ([_cell(c.company, 16)] if multi else []) + [
+            _cell(_topic_labels(c), 60),
+            _cell(", ".join(c.message_signals) or "확인 불가", 40),
+            _cell(", ".join(c.cta_signals) or "확인 불가", 40),
+            _cell(_count_labels(c.creator_vs_brand_mix, ORIGIN_LABELS), 40),
+        ]
+        for c in report.channels
+    ]
+    return _table(headers, rows) if rows else ""
 
 
 def _evidence_block(report: YouTubeReport) -> str:
-    """반응 상위 영상을 뽑아 게시일 역순으로 정렬한 근거 표를 만듭니다."""
     sections = []
     multi = len(report.channels) > 1
-    for channel in report.channels:
-        if not channel.videos:
+    for c in report.channels:
+        if not c.videos:
             continue
-        ranked = sorted(channel.videos, key=lambda video: (video.engagement_rate, video.views), reverse=True)
-        shown = sorted(ranked[:MAX_EVIDENCE_ROWS], key=lambda video: video.published_at, reverse=True)
-        rows = [[
-            _day_label(video.published_at),
-            _video_link(video),
-            video.content_format,
-            f"{video.views:,}",
-            _percent(video.engagement_rate),
-            f"{video.daily_average_views:,.0f}",
-        ] for video in shown]
-        table = _table(
-            ["게시일", "제목", "형식", "조회수", "참여율", "일평균 조회수"],
-            [":---", ":---", ":---", "---:", "---:", "---:"],
-            rows,
-        )
-        hidden = len(channel.videos) - len(shown)
+        ranked = sorted(c.videos, key=lambda v: (v.engagement_rate, v.views), reverse=True)
+        shown = sorted(ranked[:MAX_EVIDENCE_ROWS], key=lambda v: v.published_at, reverse=True)
+        rows = [
+            [_day_label(v.published_at), _video_link(v), v.content_format, f"{v.views:,}", _percent(v.engagement_rate), f"{v.daily_average_views:,.0f}"]
+            for v in shown
+        ]
+        t = _table(["게시일", "제목", "형식", "조회수", "참여율", "일평균 조회수"], rows, [":---", ":---", ":---", "---:", "---:", "---:"])
+        hidden = len(c.videos) - len(shown)
         if hidden > 0:
-            table += f"\n\n_반응 상위 {MAX_EVIDENCE_ROWS}건만 표시했습니다. 외 {hidden}건은 구조화 데이터에 있습니다._"
-        sections.append(f"#### {_cell(channel.company, 30)}\n\n{table}" if multi else table)
+            t += f"\n\n_반응 상위 {MAX_EVIDENCE_ROWS}건만 표시했습니다. 외 {hidden}건은 구조화 데이터에 있습니다._"
+        sections.append(f"#### {_cell(c.company, 30)}\n\n{t}" if multi else t)
     return "\n\n".join(sections)
 
 
 def _channel_block(report: YouTubeReport) -> str:
-    verified = [channel for channel in report.channels if channel.selected_channel]
+    verified = [c for c in report.channels if c.selected_channel]
     if not verified:
         return ""
-    rows = []
-    for channel in verified:
-        evidence = channel.official_channel_evidence
-        candidate = channel.selected_channel
-        status = "⚠️ LLM 선택 후보" if channel.official_channel_confidence == "LLM-selected candidate" else "⚠️ 미검증"
-        rows.append([
-            _cell(channel.company, 16),
-            status,
-            _cell(evidence.get("channel_name") or candidate.get("channel_name", "")),
-            _cell(evidence.get("channel_url") or candidate.get("url", "")),
-            _cell(evidence.get("official_status_note", "API 후보 응답")),
-        ])
-    return _table(
-        ["회사", "검증 상태", "채널명", "채널 URL", "검증 근거"],
-        [":---", ":---", ":---", ":---", ":---"],
-        rows,
-    )
+    rows = [
+        [
+            _cell(c.company, 16),
+            "⚠️ LLM 선택 후보" if c.official_channel_confidence == "LLM-selected candidate" else "⚠️ 미검증",
+            _cell(c.official_channel_evidence.get("channel_name") or c.selected_channel.get("channel_name", "")),
+            _cell(c.official_channel_evidence.get("channel_url") or c.selected_channel.get("url", "")),
+            _cell(c.official_channel_evidence.get("official_status_note", "API 후보 응답")),
+        ]
+        for c in verified
+    ]
+    return _table(["회사", "검증 상태", "채널명", "채널 URL", "검증 근거"], rows)
 
 
 def _comparison_text(channels: List[ChannelAnalysis]) -> str:
     rows = []
-    for channel in channels:
-        top = _top_video(channel.videos)
-        response = (
-            f"참여율 {_percent(_median(video.engagement_rate for video in channel.videos))} · "
-            f"일평균 {_compact(_median(video.daily_average_views for video in channel.videos))}"
-            if channel.videos else "분석 가능한 공개 지표 없음"
-        )
-        message = (
-            f"주제 {_topic_labels(channel)} · "
-            f"형식 {_count_labels(dict(Counter(video.content_format for video in channel.videos)))}"
-        )
-        hypothesis = (
-            f"'{_cell(top.title, 24)}'의 메시지·형식을 별도 크리에이티브 테스트군으로 검토"
-            if top else "추가 영상 표본 수집 후 메시지·형식 테스트 설계"
-        )
-        rows.append([_cell(channel.company, 16), response, _cell(message, 60), hypothesis])
+    for c in channels:
+        top = _top_video(c.videos)
+        resp = f"참여율 {_percent(_median(v.engagement_rate for v in c.videos))} · 일평균 {_compact(_median(v.daily_average_views for v in c.videos))}" if c.videos else "분석 가능한 공개 지표 없음"
+        msg = f"주제 {_topic_labels(c)} · 형식 {_count_labels(dict(Counter(v.content_format for v in c.videos)))}"
+        hypo = f"'{_cell(top.title, 24)}'의 메시지·형식을 별도 크리에이티브 테스트군으로 검토" if top else "추가 영상 표본 수집 후 메시지·형식 테스트 설계"
+        rows.append([_cell(c.company, 16), resp, _cell(msg, 60), hypo])
     if len(channels) == 2:
         shared = ", ".join(sorted(set(channels[0].recurring_topics) & set(channels[1].recurring_topics))) or "없음"
         distinct = ", ".join(sorted(set(channels[0].recurring_topics) ^ set(channels[1].recurring_topics))) or "없음"
-        rows.append([
-            "공통/차별 포인트",
-            "-",
-            _cell(f"공통 주제 {shared} · 차별 주제 {distinct}", 60),
-            "공통 주제는 차별화 메시지·CTA 변형군으로, 차별 주제는 신규 가설군으로 검토",
-        ])
-    return _table(
-        ["비교 대상", "공개 반응 신호", "메시지·형식 신호", "회사의 광고 기획 가설"],
-        [":---", ":---", ":---", ":---"],
-        rows,
-    )
+        rows.append(["공통/차별 포인트", "-", _cell(f"공통 주제 {shared} · 차별 주제 {distinct}", 60), "공통 주제는 차별화 메시지·CTA 변형군으로, 차별 주제는 신규 가설군으로 검토"])
+    return _table(["비교 대상", "공개 반응 신호", "메시지·형식 신호", "회사의 광고 기획 가설"], rows)
 
 
 def _single_channel_planning_table(channel: ChannelAnalysis, mode: str) -> str:
     videos = channel.videos
     top = _top_video(videos)
-    response = (
-        f"참여율 {_percent(_median(video.engagement_rate for video in videos))} · "
-        f"일평균 {_compact(_median(video.daily_average_views for video in videos))}"
-        if videos else "분석 가능한 공개 지표 없음"
-    )
-    format_mix = _count_labels(dict(Counter(video.content_format for video in videos)))
+    resp = f"참여율 {_percent(_median(v.engagement_rate for v in videos))} · 일평균 {_compact(_median(v.daily_average_views for v in videos))}" if videos else "분석 가능한 공개 지표 없음"
+    mix = _count_labels(dict(Counter(v.content_format for v in videos)))
     if mode == "paid_promotion":
-        table = _table(
-            ["유료 프로모션 판단 항목", "공개 콘텐츠 신호", "기대 장점", "리스크·검증 조건"],
-            [":---", ":---", ":---", ":---"],
-            [
-                ["크리에이티브 참고", _video_link(top), "반응이 확인된 표현·형식을 테스트 가설로 활용",
-                 "공개 반응은 유료 집행 성과가 아님; 별도 A/B 테스트 필요"],
-                ["크리에이터 적합성", response, "크리에이터 문체·신뢰를 활용한 제품 맥락화 가능",
-                 "채널 시청자가 목표 고객과 일치하는지 별도 검증 필요"],
-                ["콘텐츠 형식", _cell(format_mix, 40), "Shorts/롱폼 조합으로 메시지 전달 방식 실험 가능",
-                 "형식별 도달·전환 차이는 현재 공개 데이터로 확인 불가"],
-                ["고지·브랜드 통제", "유료 프로모션 포함 표시", "광고성 고지를 명확히 하여 투명성 확보",
-                 "메시지 통제·브랜드 안전성·계약 조건은 개별 검토 필요"],
-            ],
-        )
-        return f"#### 유료 프로모션 장단점 비교\n\n{table}"
-    return _table(
-        ["분석 대상", "공개 반응 신호", "콘텐츠 신호", "광고·콘텐츠 기획 가설"],
-        [":---", ":---", ":---", ":---"],
-        [
-            ["최근 콘텐츠 전략", response,
-             _cell(f"주제 {_topic_labels(channel)} · 형식 {format_mix}", 60),
-             "반복 주제·형식을 다음 콘텐츠 기획의 가설군으로 검토"],
-            ["최고 반응 영상", _video_link(top),
-             f"참여율 {_percent(top.engagement_rate)}" if top else "N/A",
-             "메시지·CTA 변형을 별도 A/B 테스트로 검증"],
-        ],
-    )
+        rows = [
+            ["크리에이티브 참고", _video_link(top), "반응이 확인된 표현·형식을 테스트 가설로 활용", "공개 반응은 유료 집행 성과가 아님; 별도 A/B 테스트 필요"],
+            ["크리에이터 적합성", resp, "크리에이터 문체·신뢰를 활용한 제품 맥락화 가능", "채널 시청자가 목표 고객과 일치하는지 별도 검증 필요"],
+            ["콘텐츠 형식", _cell(mix, 40), "Shorts/롱폼 조합으로 메시지 전달 방식 실험 가능", "형식별 도달·전환 차이는 현재 공개 데이터로 확인 불가"],
+            ["고지·브랜드 통제", "유료 프로모션 포함 표시", "광고성 고지를 명확히 하여 투명성 확보", "메시지 통제·브랜드 안전성·계약 조건은 개별 검토 필요"],
+        ]
+        return f"#### 유료 프로모션 장단점 비교\n\n{_table(['유료 프로모션 판단 항목', '공개 콘텐츠 신호', '기대 장점', '리스크·검증 조건'], rows)}"
+    rows = [
+        ["최근 콘텐츠 전략", resp, _cell(f"주제 {_topic_labels(channel)} · 형식 {mix}", 60), "반복 주제·형식을 다음 콘텐츠 기획의 가설군으로 검토"],
+        ["최고 반응 영상", _video_link(top), f"참여율 {_percent(top.engagement_rate)}" if top else "N/A", "메시지·CTA 변형을 별도 A/B 테스트로 검증"],
+    ]
+    return _table(["분석 대상", "공개 반응 신호", "콘텐츠 신호", "광고·콘텐츠 기획 가설"], rows)
 
 
 def _headline(report: YouTubeReport) -> str:
-    """리포트 상단 한 줄에 기간·표본·검증 상태를 모읍니다."""
-    total = sum(len(channel.videos) for channel in report.channels)
-    verified = [channel for channel in report.channels if channel.selected_channel]
+    total = sum(len(c.videos) for c in report.channels)
+    verified = [c for c in report.channels if c.selected_channel]
     status = "⚠️ 공식 채널 미검증 후보" if verified else "해당 없음(키워드 탐색)"
     return f"**분석 기간** {report.period} · **분석 영상** {total}건 · **채널 검증** {status}"
 
 
 def _render(report: YouTubeReport) -> str:
-    """구조화 JSON과 사람이 읽는 Markdown 리포트를 함께 반환합니다."""
     blocks = [
         ("한눈에 보기", _overview_block(report)),
         ("기간 내 반응 추이", _timeline_block(report)),
@@ -696,16 +593,13 @@ def _render(report: YouTubeReport) -> str:
         ("영상 근거", _evidence_block(report)),
         ("광고 기획 가설", report.comparative_analysis),
         ("공식 채널 후보 검증", _channel_block(report)),
-        ("API 제약사항 및 준수 고지", "\n".join(
-            f"{index}. {disclaimer}" for index, disclaimer in enumerate(report.disclaimers, 1)
-        )),
+        ("API 제약사항 및 준수 고지", "\n".join(f"{i}. {d}" for i, d in enumerate(report.disclaimers, 1))),
     ]
     lines = [f"# 🎬 {report.report_type}", "", _headline(report), ""]
-    if not any(channel.videos for channel in report.channels):
-        lines.append("> 분석 가능한 공개 영상 표본이 없습니다. 기간 또는 키워드를 넓혀 다시 실행하십시오.")
-        lines.append("")
-    for index, (title, body) in enumerate([block for block in blocks if block[1].strip()], 1):
-        lines.extend([f"## {index}. {title}", "", body, ""])
+    if not any(c.videos for c in report.channels):
+        lines.extend(["> 분석 가능한 공개 영상 표본이 없습니다. 기간 또는 키워드를 넓혀 다시 실행하십시오.", ""])
+    for idx, (title, body) in enumerate([b for b in blocks if b[1].strip()], 1):
+        lines.extend([f"## {idx}. {title}", "", body, ""])
         if title == "광고 기획 가설":
             lines.extend(["공개 반응 신호는 광고비 또는 광고 효율을 뜻하지 않습니다. 실제 집행 전 별도 A/B 테스트가 필요합니다.", ""])
     report.summary_markdown = "\n".join(lines).rstrip()
@@ -723,10 +617,10 @@ class CompetitorComparisonParams(BaseModel):
 
 
 class CompetitorComparisonScenario(BaseScenario):
-    name = property(lambda self: "youtube_competitor_comparison")
-    description = property(lambda self: "두 회사 공식 YouTube 채널의 광고 후보 콘텐츠 공개 반응을 동일 기간으로 비교한다.")
-    parameters_schema = property(lambda self: CompetitorComparisonParams)
-    required_tool_names = property(lambda self: ["find_youtube_channel", "get_channel_details", "get_channel_videos", "get_video_metrics"])
+    name = "youtube_competitor_comparison"
+    description = "두 회사 공식 YouTube 채널의 광고 후보 콘텐츠 공개 반응을 동일 기간으로 비교한다."
+    parameters_schema = CompetitorComparisonParams
+    required_tool_names = ["find_youtube_channel", "get_channel_details", "get_channel_videos", "get_video_metrics"]
 
     def execute(self, params: CompetitorComparisonParams, tools: Dict[str, BaseTool], context: Optional[Dict[str, Any]] = None) -> str:
         analyses = []
@@ -752,10 +646,10 @@ class PaidPromotionParams(BaseModel):
 
 
 class PaidPromotionScenario(BaseScenario):
-    name = property(lambda self: "youtube_paid_promotion_discovery")
-    description = property(lambda self: "유료 프로모션 포함 표시 YouTube 콘텐츠의 공개 반응을 탐색한다.")
-    parameters_schema = property(lambda self: PaidPromotionParams)
-    required_tool_names = property(lambda self: ["search_paid_promotion_videos", "get_video_metrics"])
+    name = "youtube_paid_promotion_discovery"
+    description = "유료 프로모션 포함 표시 YouTube 콘텐츠의 공개 반응을 탐색한다."
+    parameters_schema = PaidPromotionParams
+    required_tool_names = ["search_paid_promotion_videos", "get_video_metrics"]
 
     def execute(self, params: PaidPromotionParams, tools: Dict[str, BaseTool], context: Optional[Dict[str, Any]] = None) -> str:
         videos = _rows(_run(tools, "search_paid_promotion_videos", keyword=params.keyword, published_after=f"{params.start_date}T00:00:00Z"))
@@ -775,10 +669,10 @@ class CompetitorStrategyParams(BaseModel):
 
 
 class CompetitorStrategyScenario(BaseScenario):
-    name = property(lambda self: "youtube_competitor_strategy")
-    description = property(lambda self: "경쟁사 공식 YouTube 채널의 최근 업로드에서 제품·메시지 변화를 추적한다.")
-    parameters_schema = property(lambda self: CompetitorStrategyParams)
-    required_tool_names = property(lambda self: ["find_youtube_channel", "get_channel_details", "get_competitor_recent_uploads", "get_video_metrics"])
+    name = "youtube_competitor_strategy"
+    description = "경쟁사 공식 YouTube 채널의 최근 업로드에서 제품·메시지 변화를 추적한다."
+    parameters_schema = CompetitorStrategyParams
+    required_tool_names = ["find_youtube_channel", "get_channel_details", "get_competitor_recent_uploads", "get_video_metrics"]
 
     def execute(self, params: CompetitorStrategyParams, tools: Dict[str, BaseTool], context: Optional[Dict[str, Any]] = None) -> str:
         candidates = _rows(_run(tools, "find_youtube_channel", company_name=params.company))

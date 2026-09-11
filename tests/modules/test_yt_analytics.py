@@ -9,7 +9,7 @@ import pytest
 import requests
 from unittest.mock import patch, MagicMock, Mock
 
-from src.modules.yt_analytics.module import YouTubeAnalyticsModule
+from src.modules.yt_analytics.module import YouTubeAnalyticsModule, YouTubeAnalyticsContextProvider
 from src.modules.yt_analytics.tools import (
     get_channel_stats,
     get_video_comments,
@@ -17,7 +17,6 @@ from src.modules.yt_analytics.tools import (
     search_paid_promotion_videos,
 )
 from src.modules.yt_analytics.guardrails import YouTubeAnalyticsGuardrail
-from src.modules.yt_analytics.context import YouTubeAnalyticsContextProvider
 from src.modules.yt_analytics.client import YouTubeAnalyticsClient, ERROR_MESSAGES
 
 

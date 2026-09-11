@@ -39,6 +39,3 @@ class YouTubeSearchGuardrail(BaseGuardrail):
             except ValueError:
                 return GuardrailResult(passed=False, error_message="날짜는 ISO-8601 형식이어야 합니다.")
         return GuardrailResult(passed=True)
-
-    def sanitize_output(self, tool_name: str, output: Any) -> Any:
-        return output
