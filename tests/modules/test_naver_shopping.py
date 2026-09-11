@@ -129,6 +129,32 @@ def test_shopping_guardrail_date_validation():
     })
     assert valid.passed is True
 
+    # get_shopping_trends는 검색어 트렌드 API라 하한이 2016-01-01 (쇼핑 인사이트의
+    # 2017-08-01과 다름). 그 사이 날짜는 이 tool에서는 통과해야 한다.
+    valid_2016 = guard.validate_tool_args("get_shopping_trends", {
+        "keywords": "노트북",
+        "start_date": "2017-01-01",
+        "end_date": "2017-02-01"
+    })
+    assert valid_2016.passed is True
+
+    too_early = guard.validate_tool_args("get_shopping_trends", {
+        "keywords": "노트북",
+        "start_date": "2015-12-31",
+        "end_date": "2016-01-05"
+    })
+    assert too_early.passed is False
+    assert "2016-01-01" in too_early.error_message
+
+    # keywords는 최대 5개
+    too_many_keywords = guard.validate_tool_args("get_shopping_trends", {
+        "keywords": "a,b,c,d,e,f",
+        "start_date": "2026-01-01",
+        "end_date": "2026-02-01"
+    })
+    assert too_many_keywords.passed is False
+    assert "최대 5개" in too_many_keywords.error_message
+
 
 def test_shopping_guardrail_html_sanitization():
     guard = NaverShoppingGuardrail()
@@ -143,6 +169,21 @@ def test_shopping_guardrail_html_sanitization():
     # Non-string output
     dict_output = {"data": "test"}
     assert guard.sanitize_output("get_shopping_trends", dict_output) == dict_output
+
+
+def test_naver_shopping_pii_masking():
+    """handoff/03_guidelines.md 2절 - 사후 출력 정제 시 이메일/전화번호 마스킹 검증."""
+    guard = NaverShoppingGuardrail()
+
+    raw_email = "판매자 문의: seller@shop.com"
+    cleaned_email = guard.sanitize_output("get_shopping_trends", raw_email)
+    assert "seller@shop.com" not in cleaned_email
+    assert "[EMAIL_MASKED]" in cleaned_email
+
+    raw_phone = "고객센터 010-2222-3333"
+    cleaned_phone = guard.sanitize_output("get_shopping_category_trend", raw_phone)
+    assert "010-2222-3333" not in cleaned_phone
+    assert "[PHONE_MASKED]" in cleaned_phone
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
@@ -177,9 +218,14 @@ def test_get_shopping_trends_mock(mock_get_datalab):
         "end_date": "2026-02-01"
     })
     assert "노트북" in res
-    assert "95.2%" in res
     assert "태블릿" in res
-    assert "62.3%" in res
+    # 마지막 구간뿐 아니라 전체 시계열이 다 포함되어야 추세(상승/하락) 판단이 가능하다.
+    assert "80.5" in res
+    assert "95.2" in res
+    assert "50.0" in res
+    assert "62.3" in res
+    assert "2026-01-01" in res
+    assert "2026-02-01" in res
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
@@ -414,6 +460,21 @@ def test_shopping_insight_guardrail_validation():
         {"categories": "패션의류:50000000", "start_date": "2026-01-01", "end_date": "2026-02-01"},
     )
     assert res_ok.passed is True
+
+    # category_code / keyword 빈 값 차단
+    empty_category = guard.validate_tool_args(
+        "get_shopping_category_gender_trend",
+        {"category_code": "", "start_date": "2026-01-01", "end_date": "2026-02-01"},
+    )
+    assert empty_category.passed is False
+    assert "category_code" in empty_category.error_message
+
+    empty_keyword = guard.validate_tool_args(
+        "get_shopping_keyword_gender_trend",
+        {"category_code": "50000000", "keyword": "", "start_date": "2026-01-01", "end_date": "2026-02-01"},
+    )
+    assert empty_keyword.passed is False
+    assert "keyword" in empty_keyword.error_message
 
     # Other tools should pass
     assert guard.validate_tool_args("other_tool", {"anything": 100}).passed is True

@@ -18,13 +18,14 @@ def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
     """네이버 통합검색 기준 검색어 관심도 추이를 조회합니다.
 
     Args:
-        keywords: 쉼표로 구분된 기준 키워드 문자열 (예: '아이폰16, 갤럭시S24').
-        start_date: 조회 시작일 (YYYY-MM-DD, 2017-08-01 이후).
+        keywords: 쉼표로 구분된 기준 키워드 문자열, 최대 5개 (예: '아이폰16, 갤럭시S24').
+        start_date: 조회 시작일 (YYYY-MM-DD, 2016-01-01 이후).
         end_date: 조회 종료일 (YYYY-MM-DD).
 
     Returns:
-        키워드별 최근 상대 검색비율 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가
-        폴백(Fallback Mock) 데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
+        키워드별 기간 전체의 상대 검색비율 시계열 요약 문자열 (추세 판단을 위해 전체 구간을
+        반환합니다). OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock) 데이터를
+        반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
@@ -34,13 +35,7 @@ def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
         results = data.get("results", [])
         if not results:
             return "트렌드 조회 결과가 없습니다."
-        summary = []
-        for res in results:
-            title = res.get("title")
-            data_pts = res.get("data", [])
-            last_pt = data_pts[-1].get("ratio") if data_pts else "N/A"
-            summary.append(f"- 키워드 '{title}': 최근 기간 상대 검색비율 {last_pt}%")
-        return "\n".join(summary)
+        return _format_trend_results(data)
     except Exception as e:
         return f"트렌드 분석 조회 실패: {str(e)}"
 
