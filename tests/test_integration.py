@@ -7,6 +7,7 @@ from src.config import settings
 from src.core.registry import ModuleRegistry
 from src.core.agent import AgentRunner
 from src.core.scenario_registry import ScenarioRegistry
+from src.core.scenario import ScenarioExecutionPlan
 
 
 class ToolCallingFakeChat(FakeMessagesListChatModel):
@@ -310,3 +311,204 @@ def test_agent_end_to_end_youtube_analytics_pii_masking_flow(monkeypatch):
 
         assert response == "댓글 분석 완료: 개인정보가 안전하게 보호되었습니다."
         mock_get.assert_called_once()
+
+
+def test_all_ten_scenarios_discovered_in_registry():
+    """모든 10개 시나리오(유튜브 3종, 인스타 3종, 네이버 쇼핑 3종, 크로스플랫폼 1종)가 자동 탐색되는지 검증."""
+    scen_registry = ScenarioRegistry()
+    scen_registry.discover_scenarios("src.scenarios")
+
+    expected_scenarios = {
+        "youtube_competitor_comparison",
+        "youtube_competitor_strategy",
+        "youtube_paid_promotion_discovery",
+        "hashtag_surge_detection",
+        "competitor_campaign_tracking",
+        "competitor_message_shift",
+        "cross_platform_trend",
+        "naver_new_product_keyword_trend",
+        "naver_target_audience_validation",
+        "naver_keyword_audience_segmentation",
+    }
+    registered_names = set(scen_registry._scenarios.keys())
+    assert len(scen_registry) == 10
+    assert expected_scenarios == registered_names
+
+
+def test_agent_end_to_end_cross_platform_trend_scenario_routing(monkeypatch):
+    """cross_platform_trend 시나리오 라우팅 시 네이버, 유튜브, 인스타그램 도구가 순차 연동되어 리포트를 반환하는지 검증."""
+    monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
+    monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_client_id")
+    monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_client_secret")
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", "mock_ig_token")
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", "mock_ig_user")
+
+    mod_registry = ModuleRegistry()
+    mod_registry.discover_modules("src.modules")
+
+    scen_registry = ScenarioRegistry()
+    scen_registry.discover_scenarios("src.scenarios")
+
+    mock_router = MagicMock()
+    mock_router.route.return_value = ScenarioExecutionPlan(
+        scenario_name="cross_platform_trend",
+        confidence=0.95,
+        parameters={"keyword": "러닝화", "start_date": "2026-01-01", "end_date": "2026-03-01"},
+        reasoning="크로스 플랫폼 트렌드 분석 질의 매칭",
+    )
+
+    mock_llm = MagicMock()
+    mock_ai = AIMessage(
+        content="### [러닝화] 크로스 플랫폼 트렌드 분석 결과\n\n1. 네이버 쇼핑 트렌드\n2. 유튜브 관련 영상\n3. 인스타그램 해시태그 반응"
+    )
+    mock_llm.return_value = mock_ai
+    mock_llm.invoke.return_value = mock_ai
+
+    runner = AgentRunner(
+        registry=mod_registry,
+        scenario_registry=scen_registry,
+        router=mock_router,
+        llm=mock_llm,
+    )
+
+    with patch("src.modules.naver_shopping.client.requests.post") as mock_post, \
+         patch("src.modules.yt_search.client.requests.get") as mock_yt_get, \
+         patch("src.modules.instagram.client.requests.get") as mock_ig_get:
+
+        # 1. Naver shopping trend response
+        mock_post.return_value.status_code = 200
+        mock_post.return_value.json.return_value = {
+            "startDate": "2026-01-01",
+            "endDate": "2026-03-01",
+            "timeUnit": "month",
+            "results": [{
+                "title": "러닝화",
+                "keywords": ["러닝화"],
+                "data": [{"period": "2026-01-01", "ratio": 100.0}],
+            }],
+        }
+
+        # 2. YouTube search response
+        mock_yt_get.return_value.status_code = 200
+        mock_yt_get.return_value.json.return_value = {
+            "items": [{
+                "id": {"videoId": "vid_run_1"},
+                "snippet": {
+                    "title": "2026 러닝화 추천 가이드",
+                    "description": "최신 러닝화 트렌드 분석 영상입니다.",
+                    "channelTitle": "러너스TV",
+                },
+            }],
+        }
+
+        # 3. Instagram response (search_hashtag_id then get_hashtag_top_media)
+        def fake_ig_get(url, params=None, **kwargs):
+            res = MagicMock()
+            res.status_code = 200
+            if "ig_hashtag_search" in url:
+                res.json.return_value = {"data": [{"id": "17841400000000001"}]}
+            elif "top_media" in url:
+                res.json.return_value = {
+                    "data": [{
+                        "id": "media_run_1",
+                        "like_count": 120,
+                        "comments_count": 30,
+                        "timestamp": "2026-02-15T12:00:00+0000",
+                        "caption": "#러닝화 신고 하프마라톤 완주!",
+                        "permalink": "https://instagram.com/p/run1",
+                    }]
+                }
+            else:
+                res.json.return_value = {"data": []}
+            return res
+
+        mock_ig_get.side_effect = fake_ig_get
+
+        response = runner.run("러닝화 크로스 트렌드 분석해줘")
+
+        assert "크로스 플랫폼 트렌드 분석 결과" in response
+        assert "1. 네이버 쇼핑 트렌드" in response
+        assert "2. 유튜브 관련 영상" in response
+        assert "3. 인스타그램 해시태그 반응" in response
+
+
+def test_agent_end_to_end_hashtag_surge_detection_scenario_routing(monkeypatch):
+    """hashtag_surge_detection 시나리오 라우팅 시 hours_range 적용 및 리포트 생성을 검증."""
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", "mock_ig_token")
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", "mock_ig_user")
+
+    mod_registry = ModuleRegistry()
+    mod_registry.discover_modules("src.modules")
+
+    scen_registry = ScenarioRegistry()
+    scen_registry.discover_scenarios("src.scenarios")
+
+    mock_router = MagicMock()
+    mock_router.route.return_value = ScenarioExecutionPlan(
+        scenario_name="hashtag_surge_detection",
+        confidence=0.98,
+        parameters={
+            "base_keyword": "성남맛집",
+            "compare_hashtags": ["#성남맛집", "#판교맛집"],
+            "hours_range": 12,
+        },
+        reasoning="인스타그램 급상승 해시태그 분석",
+    )
+
+    runner = AgentRunner(
+        registry=mod_registry,
+        scenario_registry=scen_registry,
+        router=mock_router,
+        llm=MagicMock(),
+    )
+
+    with patch("src.modules.instagram.client.requests.get") as mock_ig_get:
+        def fake_ig_get(url, params=None, **kwargs):
+            res = MagicMock()
+            res.status_code = 200
+            if "ig_hashtag_search" in url:
+                res.json.return_value = {"data": [{"id": "17841400000000001", "name": "성남맛집"}]}
+            elif "recent_media" in url:
+                res.json.return_value = {
+                    "data": [
+                        {
+                            "id": f"rec_{i}",
+                            "like_count": 50,
+                            "comments_count": 10,
+                            "timestamp": "2026-09-11T12:00:00+0000",
+                            "caption": "#성남맛집 핫플 탐방",
+                            "permalink": f"https://instagram.com/p/{i}",
+                            "media_type": "IMAGE",
+                        }
+                        for i in range(6)
+                    ]
+                }
+            elif "top_media" in url:
+                res.json.return_value = {
+                    "data": [
+                        {
+                            "id": f"top_{i}",
+                            "like_count": 30,
+                            "comments_count": 5,
+                            "timestamp": "2026-08-01T12:00:00+0000",
+                            "caption": "#성남맛집 인기글",
+                            "permalink": f"https://instagram.com/p/top_{i}",
+                            "media_type": "IMAGE",
+                        }
+                        for i in range(5)
+                    ]
+                }
+            else:
+                res.json.return_value = {"data": []}
+            return res
+
+        mock_ig_get.side_effect = fake_ig_get
+
+        response = runner.run("성남맛집 인스타그램 최근 12시간 급상승 분석해줘")
+
+        assert "급상승 해시태그" in response
+        assert "분석 시간 범위**: 최근 **12시간" in response
+        assert "최신글 수(12h)" in response
+        assert "성남맛집" in response
+
+

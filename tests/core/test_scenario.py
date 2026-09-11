@@ -371,4 +371,22 @@ class TestCrossPlatformTrendScenario:
         mock_ig_top.invoke.assert_not_called()
         assert "해시태그 '존재하지않는태그'에 대한 ID를 찾을 수 없습니다." in result
 
+    def test_cross_platform_trend_empty_or_whitespace_hashtag_keyword(self):
+        """해시태그 키워드가 공백이거나 '#' 단독일 때 도구 호출 없이 안전하게 폴백 메시지를 반환하는지 검증."""
+        scenario = CrossPlatformTrendScenario()
+        params = CrossPlatformTrendParams(keyword="  #  ")
+
+        mock_ig_search = MagicMock()
+        mock_ig_top = MagicMock()
+
+        tools = {
+            "search_hashtag_id": mock_ig_search,
+            "get_hashtag_top_media": mock_ig_top,
+        }
+
+        result = scenario.execute(params, tools, context={})
+        mock_ig_search.invoke.assert_not_called()
+        mock_ig_top.invoke.assert_not_called()
+        assert "유효한 해시태그 키워드가 아닙니다." in result
+
 
