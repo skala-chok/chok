@@ -197,7 +197,7 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
                     logger.warning("경쟁사 프로필 조회 실패 (%s): %s", clean_user, e)
                     tool_res_str = f"조회 실패: {e}"
 
-            # 1. 공식 계정 Bio / Website 파싱
+            # 1. 공식 계정 소개글(Bio) 및 웹사이트(Web) 파싱
             bio_match = re.search(r'Bio="([^"]+)"', tool_res_str)
             web_match = re.search(r'Web="([^"]+)"', tool_res_str)
             bio = bio_match.group(1) if bio_match else ""
@@ -273,7 +273,7 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
                 )
             )
 
-        # 필수 준수 Disclaimers
+        # 필수 준수 고지사항 (Disclaimers)
         disclaimers = [
             "조회수(View count)는 Instagram Graph API의 business_discovery에서 타 계정 미디어에 일절 제공하지 않는 지표이므로, 조회수/재생수 수치는 생성하지 않고 좋아요/댓글 기반 참여율로 대체 분석하였습니다.",
             "계정 username은 절대 추측하지 않으며, API 응답으로 확인된 공식 핸들만 조회 대상으로 보고합니다. 확인되지 않는 계정은 사용자에게 확인을 요청합니다.",

@@ -64,7 +64,7 @@ def wrap_tool_with_guardrails(
     original_func = getattr(tool, "func", None)
     original_coroutine = getattr(tool, "coroutine", None)
 
-    # Check sync and async capability
+    # 동기 및 비동기 지원 여부 확인
     if isinstance(tool, StructuredTool):
         has_sync = tool.func is not None
         has_async = tool.coroutine is not None
@@ -75,7 +75,7 @@ def wrap_tool_with_guardrails(
         )
 
     def guarded_func(**kwargs: Any) -> Any:
-        # 1. Pre-execution argument validation
+        # 1. [사전 방어] 도구 인자 유효성 검증
         for guardrail in guardrails:
             val_result = guardrail.validate_tool_args(tool.name, kwargs)
             if not val_result.passed:
@@ -89,7 +89,7 @@ def wrap_tool_with_guardrails(
                 )
                 return f"[가드레일 검증 실패] {err_msg}"
 
-        # 2. Execute underlying tool function with timing and logging
+        # 2. 원본 도구 함수 실행 (소요 시간 측정 및 로깅)
         start_time = time.time()
         logger.debug("[도구 호출 시작] 도구: '%s' | 인자: %s", tool.name, kwargs)
         try:
@@ -114,7 +114,7 @@ def wrap_tool_with_guardrails(
             )
             raise
 
-        # 3. Post-execution sanitization
+        # 3. [사후 정제] 출력 데이터 살균 및 개인정보 마스킹
         sanitized_output = raw_output
         for guardrail in guardrails:
             prev_out = sanitized_output
@@ -129,7 +129,7 @@ def wrap_tool_with_guardrails(
         return sanitized_output
 
     async def guarded_coroutine(**kwargs: Any) -> Any:
-        # 1. Pre-execution argument validation
+        # 1. [사전 방어] 도구 인자 유효성 검증
         for guardrail in guardrails:
             val_result = guardrail.validate_tool_args(tool.name, kwargs)
             if not val_result.passed:
@@ -143,7 +143,7 @@ def wrap_tool_with_guardrails(
                 )
                 return f"[가드레일 검증 실패] {err_msg}"
 
-        # 2. Execute underlying tool coroutine with timing and logging
+        # 2. 원본 도구 코루틴 비동기 실행 (소요 시간 측정 및 로깅)
         start_time = time.time()
         logger.debug("[비동기 도구 호출 시작] 도구: '%s' | 인자: %s", tool.name, kwargs)
         try:
@@ -168,7 +168,7 @@ def wrap_tool_with_guardrails(
             )
             raise
 
-        # 3. Post-execution sanitization
+        # 3. [사후 정제] 출력 데이터 살균 및 개인정보 마스킹
         sanitized_output = raw_output
         for guardrail in guardrails:
             prev_out = sanitized_output

@@ -221,22 +221,22 @@ def check_fault_tolerance_fallback_mock() -> Tuple[bool, str]:
 
     with patch("requests.get", side_effect=RequestException("Simulated 500 Network Outage")):
         with patch("requests.post", side_effect=RequestException("Simulated Timeout")):
-            # 1. Naver Search
+            # 1. 네이버 검색 API 외란 테스트
             n_res = NaverSearchClient().search_blog("테스트")
             if "items" not in n_res or not n_res["items"]:
                 return False, "NaverSearchClient 네트워크 에러 시 fallback items 계약 위반"
 
-            # 2. Naver Shopping
+            # 2. 네이버 쇼핑/데이터랩 API 외란 테스트
             s_res = NaverShoppingClient().get_datalab_trend(["패션"], "2026-01-01", "2026-03-01")
             if "results" not in s_res or not s_res["results"]:
                 return False, "NaverShoppingClient 네트워크 에러 시 fallback results 계약 위반"
 
-            # 3. YouTube Search
+            # 3. YouTube 검색 API 외란 테스트
             y_res = YouTubeSearchClient().search_videos("test")
             if "items" not in y_res or not y_res["items"]:
                 return False, "YouTubeSearchClient 네트워크 에러 시 fallback items 계약 위반"
 
-            # 4. Instagram
+            # 4. 인스타그램 Graph API 외란 테스트
             i_res = InstagramApiClient().search_hashtag("kbeauty")
             if "data" not in i_res or not i_res["data"]:
                 return False, "InstagramApiClient 네트워크 에러 시 fallback data 계약 위반"

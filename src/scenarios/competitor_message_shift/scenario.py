@@ -232,7 +232,7 @@ class CompetitorMessageShiftScenario(BaseScenario):
                 if tag in p["caption"] and tag not in ad_tags:
                     ad_tags.append(tag)
 
-        # 필수 준수 Disclaimers
+        # 필수 준수 고지사항 (Disclaimers)
         disclaimers = [
             "분석 근거가 된 캡션 원문은 수집 데이터에 실제로 존재하는 문구만을 직접 인용하였습니다.",
             "메시지 방향 변화는 timestamp 기준 이전 게시물과 이후 게시물의 캡션을 대조한 객관적 근거에 기반하며, 시점 구분 없는 막연한 주장을 배제하였습니다.",

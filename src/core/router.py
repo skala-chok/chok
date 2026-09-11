@@ -102,10 +102,10 @@ class ScenarioRouter:
         for scen in self.registry.get_all_scenarios():
             schema = scen.parameters_schema
             fields_desc = []
-            if hasattr(schema, "model_fields"):  # Pydantic v2
+            if hasattr(schema, "model_fields"):  # Pydantic v2 지원
                 for fname, finfo in schema.model_fields.items():
                     fields_desc.append(f"    - {fname}: {finfo.description or finfo.annotation}")
-            elif hasattr(schema, "__fields__"):  # Pydantic v1
+            elif hasattr(schema, "__fields__"):  # Pydantic v1 호환 지원
                 for fname, finfo in schema.__fields__.items():
                     fields_desc.append(f"    - {fname}: {finfo.field_info.description or finfo.type_}")
 

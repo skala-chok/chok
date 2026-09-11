@@ -68,16 +68,16 @@ def test_agent_runner_system_prompt_and_tools_compilation():
     llm = FakeChatWithTools(responses=["Agent response!"])
     runner = AgentRunner(registry=registry, llm=llm)
 
-    # Verify tools
+    # 도구 등록 정상 검증
     assert len(runner.tools) == 1
     assert runner.tools[0].name == "greet"
 
-    # Verify system prompt snippet integration
+    # 시스템 프롬프트 조각 통합 검증
     assert "YouTube 및 Naver Open API" in runner.system_prompt_text
     assert "[dummy test module 가이드]" in runner.system_prompt_text
     assert "Dummy Context" in runner.system_prompt_text
 
-    # Verify successful execution
+    # 정상 실행 완료 검증
     result = runner.run("Hello there")
     assert result == "Agent response!"
 
@@ -224,7 +224,7 @@ def test_agent_runner_scenario_tool_reporting_hook():
         scenario_registry=scen_registry,
     )
 
-    # Router mock
+    # 지능형 라우터 목(Mock) 객체 구성
     mock_plan = MagicMock()
     mock_plan.scenario_name = "mock_report_scen"
     mock_plan.confidence = 0.95

@@ -37,7 +37,7 @@ def _failure(error: Exception) -> Dict[str, Any]:
 
 @tool
 def get_channel_stats(channel_id: str) -> str:
-    """Get subscriber count, total views, and video count of a YouTube channel by channel_id."""
+    """채널 ID(channel_id)를 기반으로 YouTube 채널의 구독자 수, 총 조회수, 동영상 수를 조회합니다."""
     try:
         data = client.get_channel_info(channel_id)
         items = data.get("items", [])

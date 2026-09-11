@@ -76,7 +76,7 @@ def test_naver_shopping_context_provider():
 def test_shopping_guardrail_input_validation():
     guard = NaverShoppingGuardrail()
 
-    # Empty query rejection
+    # 빈 쿼리 입력 차단 검증
     res_empty = guard.validate_input("")
     assert res_empty.passed is False
     assert "검색 쿼리가 비어 있습니다" in res_empty.error_message
@@ -84,7 +84,7 @@ def test_shopping_guardrail_input_validation():
     res_whitespace = guard.validate_input("   ")
     assert res_whitespace.passed is False
 
-    # Valid query
+    # 정상 쿼리 통과 검증
     res_valid = guard.validate_input("맥북 프로 M3")
     assert res_valid.passed is True
 
@@ -447,7 +447,7 @@ def test_shopping_insight_guardrail_validation():
     assert empty_keyword.passed is False
     assert "keyword" in empty_keyword.error_message
 
-    # Other tools should pass
+    # 검증 대상 외 기타 도구 통과 검증
     assert guard.validate_tool_args("other_tool", {"anything": 100}).passed is True
 
 

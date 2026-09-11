@@ -1,4 +1,4 @@
-"""Structured YouTube competitor-analysis scenarios."""
+"""유튜브 경쟁사 분석 구조화 시나리오 모듈."""
 
 import re
 from collections import Counter, defaultdict
@@ -54,7 +54,7 @@ def _video_ids(rows: List[Dict[str, Any]]) -> List[str]:
 
 
 def _select_channel(candidates: List[Dict[str, Any]], context: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Select one likely official candidate; selection is not ownership proof."""
+    """가장 유력한 공식 채널 후보 1개를 선택합니다 (단순 선별이며 공식 소유권 증명이 아님을 명시)."""
     if not candidates:
         return {}
     llm = (context or {}).get("llm")

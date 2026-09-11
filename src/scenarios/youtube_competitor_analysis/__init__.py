@@ -1,1 +1,1 @@
-"""YouTube competitor-analysis scenarios."""
+"""유튜브 경쟁사 분석 시나리오 패키지."""

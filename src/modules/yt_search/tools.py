@@ -1,4 +1,4 @@
-"""Guarded, mockable YouTube search tools."""
+"""가드레일 적용 및 모킹 가능한 YouTube 검색 도구 모음."""
 
 from typing import Any, Dict, List, Optional
 
@@ -10,7 +10,7 @@ client = YouTubeSearchClient()
 
 
 def _video_items(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Normalize search and playlist responses into one video contract."""
+    """검색 및 재생목록 응답을 단일 비디오 계약 규격으로 일원화 정규화합니다."""
     videos = []
     for item in data.get("items", []):
         if not isinstance(item, dict):
@@ -37,7 +37,7 @@ def _video_items(data: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 @tool
 def find_youtube_channel(company_name: str) -> List[Dict[str, Any]]:
-    """Find candidate YouTube channels for a company; official status requires verification."""
+    """기업/브랜드명을 기반으로 후보 YouTube 채널을 검색합니다 (공식 인증 상태는 추가 검증 필요)."""
     return [
         {"channel_id": item.get("id", {}).get("channelId", ""), "channel_name": item.get("snippet", {}).get("title", ""),
          "description": item.get("snippet", {}).get("description", ""),
@@ -48,7 +48,7 @@ def find_youtube_channel(company_name: str) -> List[Dict[str, Any]]:
 
 @tool
 def get_channel_details(channel_id: str) -> Dict[str, Any]:
-    """Get public metadata and statistics for a candidate channel ID."""
+    """후보 채널 ID에 대한 공개 메타데이터 및 통계(구독자, 총 조회수 등)를 조회합니다."""
     items = client.get_channel_details(channel_id).get("items", [])
     if not items:
         return {"found": False, "channel_id": channel_id, "error": "채널을 찾을 수 없습니다."}
@@ -63,12 +63,12 @@ def get_channel_details(channel_id: str) -> Dict[str, Any]:
 
 @tool
 def get_channel_videos(channel_id: str, published_after: str, published_before: Optional[str] = None, keyword: Optional[str] = None, max_results: int = 20) -> List[Dict[str, Any]]:
-    """Get channel videos inside an ISO-8601 UTC date range; optional keyword narrows candidates."""
+    """지정된 날짜 범위 내 특정 채널의 업로드 영상을 검색합니다 (선택적 키워드 필터링 지원)."""
     return _video_items(client.search_videos(keyword or "", min(max_results, 50), channel_id, published_after, published_before))
 
 
 @tool
 def get_competitor_recent_uploads(channel_id: str, published_after: Optional[str] = None, max_results: int = 20) -> List[Dict[str, Any]]:
-    """Get recent uploads via channels.list then playlistItems.list, optionally filtering by date."""
+    """채널의 업로드 재생목록을 조회하여 최근 업로드된 영상 목록을 수집합니다 (선택적 날짜 필터링 지원)."""
     videos = _video_items(client.get_recent_uploads(channel_id, min(max_results, 50)))
     return [video for video in videos if not published_after or video["published_at"] >= published_after]

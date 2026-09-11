@@ -1,1 +1,1 @@
-"""Naver Shopping trend-analysis scenarios."""
+"""네이버 쇼핑 트렌드 분석 시나리오 패키지."""
