@@ -1,6 +1,6 @@
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
@@ -74,11 +74,14 @@ class AgentRunner:
         if llm is not None:
             self.llm = llm
         else:
-            self.llm = ChatOpenAI(
-                model=settings.MODEL_NAME,
-                api_key=settings.OPENAI_API_KEY or "dummy-key",
-                temperature=settings.TEMPERATURE,
-            )
+            llm_kwargs: Dict[str, Any] = {
+                "model": settings.MODEL_NAME,
+                "api_key": settings.OPENAI_API_KEY or "dummy-key",
+                "temperature": settings.TEMPERATURE,
+            }
+            if any(p in settings.MODEL_NAME for p in ("gpt-5", "o1", "o3")):
+                llm_kwargs["reasoning_effort"] = "none"
+            self.llm = ChatOpenAI(**llm_kwargs)
 
         # Assemble Scenario Registry & Router
         if scenario_registry is not None:
@@ -102,6 +105,7 @@ class AgentRunner:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
 
+        # Create Fallback General Agent
         agent = create_tool_calling_agent(self.llm, self.tools, prompt)
         self.executor = AgentExecutor(
             agent=agent,
@@ -110,7 +114,12 @@ class AgentRunner:
             handle_parsing_errors=True,
         )
 
-    def run(self, query: str) -> str:
+    def run(
+        self,
+        query: str,
+        callbacks: Optional[List[Any]] = None,
+        on_status: Optional[Callable[[str], None]] = None,
+    ) -> str:
         """Run input guardrail check, route to scenario chain if matched, or fallback to agent executor."""
         # 1. Pre-execution Input Guardrail Check
         for guardrail in self.all_guardrails:
@@ -122,6 +131,8 @@ class AgentRunner:
                     val_res.error_message,
                     query,
                 )
+                if on_status:
+                    on_status(f"🛑 [사전 가드레일 차단] {val_res.error_message}")
                 return f"[안내] 입력이 가드레일 정책에 의해 차단되었습니다: {val_res.error_message}"
 
         # 2. Intelligent Scenario Routing
@@ -131,6 +142,10 @@ class AgentRunner:
                 if plan and plan.scenario_name in self.scenario_registry:
                     scenario: BaseScenario = self.scenario_registry[plan.scenario_name]
                     logger.info("선택된 시나리오 체인 실행: %s", scenario.name)
+                    if on_status:
+                        on_status(
+                            f"🎯 **[시나리오 라우터 판정]** `{scenario.name}` 자동 매칭 (신뢰도: {plan.confidence:.2f})"
+                        )
 
                     # Filter required tools for this scenario
                     scenario_tools = {}
@@ -140,6 +155,49 @@ class AgentRunner:
                                 scenario_tools[t_name] = self.tools_map[t_name]
                     else:
                         scenario_tools = dict(self.tools_map)
+
+                    # Wrap tools with real-time on_status reporting if hook provided
+                    if on_status:
+                        reporting_tools = {}
+                        for t_name, original_tool in scenario_tools.items():
+                            class _ReportingToolWrapper:
+                                def __init__(self, inner, name, reporter):
+                                    self._inner = inner
+                                    self.name = name
+                                    self._reporter = reporter
+                                    self.description = getattr(inner, "description", "")
+                                    self.args_schema = getattr(inner, "args_schema", None)
+
+                                def invoke(self, input_args, *args, **kwargs):
+                                    self._reporter(
+                                        f"🔧 **[도구 실행]** `{self.name}`\n- 파라미터: `{input_args}`"
+                                    )
+                                    t0 = time.time()
+                                    try:
+                                        res = self._inner.invoke(input_args, *args, **kwargs)
+                                        el = time.time() - t0
+                                        res_str = str(res)
+                                        preview = res_str[:120] + "..." if len(res_str) > 120 else res_str
+                                        self._reporter(
+                                            f"✅ **[도구 완료]** `{self.name}` ({el:.2f}초)\n> {preview}"
+                                        )
+                                        return res
+                                    except Exception as e_tool:
+                                        el = time.time() - t0
+                                        self._reporter(
+                                            f"❌ **[도구 오류]** `{self.name}` ({el:.2f}초): {e_tool}"
+                                        )
+                                        raise
+
+                                def __call__(self, *args, **kwargs):
+                                    return self.invoke(*args, **kwargs)
+
+                            reporting_tools[t_name] = _ReportingToolWrapper(
+                                original_tool, t_name, on_status
+                            )
+                        scenario_tools_to_inject = reporting_tools
+                    else:
+                        scenario_tools_to_inject = scenario_tools
 
                     # Parse parameters via scenario schema
                     schema_cls = scenario.parameters_schema
@@ -160,9 +218,11 @@ class AgentRunner:
                                 "plan": plan,
                                 "query": query,
                             }
+                            if on_status:
+                                on_status(f"⚙️ **[시나리오 실행 파이프라인 가동]** `{scenario.name}`")
                             return scenario.run(
                                 params=validated_params,
-                                tools=scenario_tools,
+                                tools=scenario_tools_to_inject,
                                 context=context,
                             )
                         except Exception as e_exec:
@@ -177,8 +237,13 @@ class AgentRunner:
 
         # 3. Fallback: General Agent Executor
         logger.info("[일반 에이전트 시작] ReAct 도구 호출 루프 진입: '%s'", query)
+        if on_status:
+            on_status("🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 진입")
         start_agent = time.time()
-        result = self.executor.invoke({"input": query})
+        invoke_config: Dict[str, Any] = {}
+        if callbacks:
+            invoke_config["callbacks"] = callbacks
+        result = self.executor.invoke({"input": query}, config=invoke_config)
         elapsed_agent = time.time() - start_agent
         output_text = (
             result.get("output", "") if isinstance(result, dict) else str(result)
@@ -188,6 +253,8 @@ class AgentRunner:
             elapsed_agent,
             len(output_text),
         )
+        if on_status:
+            on_status(f"✅ **[일반 에이전트 완료]** 소요시간: {elapsed_agent:.2f}초")
         return output_text
 
 

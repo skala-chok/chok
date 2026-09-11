@@ -6,6 +6,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from src.config import settings
 from src.core.registry import ModuleRegistry
 from src.core.agent import AgentRunner
+from src.core.scenario_registry import ScenarioRegistry
 
 
 class ToolCallingFakeChat(FakeMessagesListChatModel):
@@ -15,7 +16,7 @@ class ToolCallingFakeChat(FakeMessagesListChatModel):
 
 
 def test_full_registry_discovery():
-    """모든 4개 모듈(yt_search, yt_analytics, naver_search, naver_shopping)이 자동 탐색되는지 검증."""
+    """모든 5개 모듈(yt_search, yt_analytics, naver_search, naver_shopping, instagram)이 자동 탐색되는지 검증."""
     registry = ModuleRegistry()
     registry.discover_modules("src.modules")
 
@@ -24,29 +25,37 @@ def test_full_registry_discovery():
     assert "yt_analytics" in all_registered
     assert "naver_search" in all_registered
     assert "naver_shopping" in all_registered
-    assert len(registry._modules) == 4
+    assert "instagram" in all_registered
+    assert len(registry._modules) == 5
 
 
 def test_agent_runner_initialization_with_all_modules(monkeypatch):
-    """모든 API 키가 주어졌을 때 4개 모듈이 모두 활성화되고 총 14개 도구가 등록되는지 검증."""
+    """모든 API 키가 주어졌을 때 5개 모듈이 모두 활성화되고 총 19개 도구가 등록되는지 검증."""
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_client_id")
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_client_secret")
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", "mock_ig_token")
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", "mock_ig_user")
 
     registry = ModuleRegistry()
     registry.discover_modules("src.modules")
     enabled = registry.get_enabled_modules()
-    assert len(enabled) == 4
+    assert len(enabled) == 5
 
     runner = AgentRunner(registry=registry, llm=MagicMock())
-    # yt_search(2) + yt_analytics(2) + naver_search(2) + naver_shopping(7) = 13 tools
-    assert len(runner.tools) == 13
+    # yt_search(6) + yt_analytics(4) + naver_search(2) + naver_shopping(7) + instagram(4) = 23 tools
+    assert len(runner.tools) == 23
 
     tool_names = {t.name for t in runner.tools}
     expected_tools = {
         "search_youtube_videos",
         "get_video_transcript",
+        "find_youtube_channel",
+        "get_channel_videos",
+        "get_competitor_recent_uploads",
+        "search_paid_promotion_videos",
         "get_channel_stats",
+        "get_video_metrics",
         "get_video_comments",
         "search_naver_blog",
         "search_naver_news",
@@ -57,6 +66,10 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
         "get_shopping_keyword_trend",
         "get_shopping_keyword_gender_trend",
         "get_shopping_keyword_age_trend",
+        "search_hashtag_id",
+        "get_hashtag_recent_media",
+        "get_hashtag_top_media",
+        "get_competitor_profile",
     }
     assert tool_names == expected_tools
 
@@ -65,6 +78,7 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert "YouTube 채널 통계 및 시청자 댓글 분석 가이드" in runner.system_prompt_text
     assert "네이버 블로그 및 뉴스 검색 가이드" in runner.system_prompt_text
     assert "네이버 쇼핑 데이터랩 트렌드 분석 가이드" in runner.system_prompt_text
+    assert "인스타그램 Graph API 연동 모듈" in runner.system_prompt_text
 
 
 def test_graceful_degradation_with_partial_keys(monkeypatch):
@@ -73,6 +87,8 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", None)
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", None)
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", None)
 
     registry = ModuleRegistry()
     registry.discover_modules("src.modules")
@@ -81,12 +97,14 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     assert {m.name for m in enabled} == {"yt_search", "yt_analytics"}
 
     runner_yt = AgentRunner(registry=registry, llm=MagicMock())
-    assert len(runner_yt.tools) == 4
+    assert len(runner_yt.tools) == 10
 
     # 2. Only Naver API credentials provided
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_id")
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_sec")
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", None)
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", None)
 
     registry_naver = ModuleRegistry()
     registry_naver.discover_modules("src.modules")
@@ -98,10 +116,28 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     # naver_search(2) + naver_shopping(7) = 9 tools
     assert len(runner_naver.tools) == 9
 
-    # 3. No API keys provided
+    # 3. Only Instagram API credentials provided
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", None)
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", "mock_token")
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", "mock_uid")
+
+    registry_ig = ModuleRegistry()
+    registry_ig.discover_modules("src.modules")
+    enabled_ig = registry_ig.get_enabled_modules()
+    assert len(enabled_ig) == 1
+    assert {m.name for m in enabled_ig} == {"instagram"}
+
+    runner_ig = AgentRunner(registry=registry_ig, llm=MagicMock())
+    assert len(runner_ig.tools) == 4
+
+    # 4. No API keys provided
+    monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
+    monkeypatch.setattr(settings, "NAVER_CLIENT_ID", None)
+    monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", None)
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", None)
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", None)
 
     registry_empty = ModuleRegistry()
     registry_empty.discover_modules("src.modules")
@@ -134,6 +170,8 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_client_id")
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_client_secret")
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", "mock_ig_token")
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", "mock_ig_user")
 
     registry = ModuleRegistry()
     registry.discover_modules("src.modules")
@@ -179,6 +217,11 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     assert "[가드레일 검증 실패]" in naver_trend_res
     assert "날짜는 YYYY-MM-DD 형식이어야 합니다." in naver_trend_res
 
+    # Worker 5: search_hashtag_id (empty query)
+    ig_res = tools_map["search_hashtag_id"].invoke({"query": "   "})
+    assert "[가드레일 검증 실패]" in ig_res
+    assert "검색할 해시태그 키워드가 비어 있습니다." in ig_res
+
 
 def test_agent_end_to_end_naver_search_flow(monkeypatch):
     """Naver 검색 도구 호출 및 결과 정제(Sanitization)를 포함한 End-to-End 에이전트 실행 검증."""
@@ -212,7 +255,7 @@ def test_agent_end_to_end_naver_search_flow(monkeypatch):
             }]
         }
 
-        runner = AgentRunner(registry=registry, llm=fake_llm)
+        runner = AgentRunner(registry=registry, llm=fake_llm, scenario_registry=ScenarioRegistry())
         response = runner.run("LangChain 튜토리얼 찾아줘")
 
         assert response == "네이버 블로그에서 최신 LangChain 튜토리얼 정보를 찾았습니다."
@@ -247,6 +290,7 @@ def test_agent_end_to_end_youtube_analytics_pii_masking_flow(monkeypatch):
             "items": [{
                 "snippet": {
                     "topLevelComment": {
+                        "id": "comment_test",
                         "snippet": {
                             "authorDisplayName": "HongGilDong",
                             "textDisplay": "연락처는 user@example.com 또는 010-1234-5678 입니다.",
@@ -258,7 +302,7 @@ def test_agent_end_to_end_youtube_analytics_pii_masking_flow(monkeypatch):
             }]
         }
 
-        runner = AgentRunner(registry=registry, llm=fake_llm)
+        runner = AgentRunner(registry=registry, llm=fake_llm, scenario_registry=ScenarioRegistry())
         response = runner.run("해당 영상 댓글 분석해줘")
 
         assert response == "댓글 분석 완료: 개인정보가 안전하게 보호되었습니다."
