@@ -99,7 +99,7 @@ skala-chok/
 │   │   ├── yt_search/               # YouTube 영상 검색 & 자막
 │   │   ├── yt_analytics/            # YouTube 통계 & 댓글 수집
 │   │   ├── naver_search/            # 네이버 블로그 & 뉴스 검색
-│   │   └── naver_shopping/          # 네이버 쇼핑 최저가 & 데이터랩 트렌드
+│   │   └── naver_shopping/          # 네이버 쇼핑 데이터랩 트렌드 (분야/키워드 x 전체/성별/연령)
 │   └── scenarios/                   # 🚀 2. 복합 시나리오 개발 영역 (Tool 체이닝)
 │       └── cross_platform_trend/    # [예시] 네이버 트렌드 + 유튜브 크로스 분석 시나리오
 └── tests/                           # 테스트 스위트 (100% Mock 격리)
@@ -508,7 +508,7 @@ class CompetitorAnalysisScenario(BaseScenario):
 | **Worker 1** | `src/modules/yt_search` | YouTube 영상/자막 | `search_youtube_videos`<br>`get_video_transcript` | • `max_results` (1~10) 제한<br>• 비어있거나 부적절한 `video_id` 검증 |
 | **Worker 2** | `src/modules/yt_analytics` | YouTube 통계/댓글 | `get_channel_stats`<br>`get_video_comments` | • `max_comments` (1~50) 제한<br>• 댓글 내 이메일/전화번호(PII) 마스킹 정제 |
 | **Worker 3** | `src/modules/naver_search` | 네이버 블로그/뉴스 | `search_naver_blog`<br>`search_naver_news` | • `display` (1~10), `sort` ('sim'/'date') 검증<br>• 응답 내 HTML 태그(`<b>` 등) 제거 |
-| **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑/트렌드 | `search_naver_shopping`<br>`get_shopping_trends` | • 0원 어뷰징 상품 필터링<br>• 날짜(YYYY-MM-DD) 형식 및 범위 검증 |
+| **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑 데이터랩 트렌드 | `get_shopping_trends`<br>`get_shopping_category_trend`<br>`get_shopping_category_gender_trend`<br>`get_shopping_category_age_trend`<br>`get_shopping_keyword_trend`<br>`get_shopping_keyword_gender_trend`<br>`get_shopping_keyword_age_trend` | • 날짜(YYYY-MM-DD) 형식 및 범위(2017-08-01~) 검증<br>• 분야 최대 3개 / 키워드 최대 5개 제한<br>• `time_unit` 값 검증 |
 
 ### Git 무충돌(Zero Merge Conflict) 원칙
 1. **코어 동결 (Core Freeze)**: `src/core/` 디렉토리는 허가 없이 수정하지 않습니다.
