@@ -25,7 +25,7 @@ ERROR_MESSAGES = {
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: 보안 오류 추상화 및 쿼터 최적화 (Information Hiding & Batching)]
+# 🎯 [코드 참고사항: 보안 오류 추상화 및 쿼터 최적화 (Information Hiding & Batching)]
 # 1. 민감 정보 노출 방지 (Information Hiding):
 #    - Google API 원문 예외나 HTTP 스택 트레이스에 포함될 수 있는 API Key, 엔드포인트 URL을
 #      사용자 및 상위 레이어에 일절 노출하지 않고, 안전한 표준 에러 코드(YouTubeAPIError)로 추상화

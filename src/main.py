@@ -114,7 +114,7 @@ def main():
         "--mock",
         "-m",
         action="store_true",
-        help="외부 API 키 없이 모의(Mock) LLM/라우터 모드로 실행 (교수님 채점 및 테스트용)",
+        help="외부 API 키 없이 모의(Mock) LLM/라우터 모드로 실행 (코드 검증 및 테스트용)",
     )
     parser.add_argument(
         "--log-level",

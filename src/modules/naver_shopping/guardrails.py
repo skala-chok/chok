@@ -12,7 +12,7 @@ from src.core.guardrails import sanitize_text
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: 네이버 쇼핑 가드레일 (Guardrail-by-Design)]
+# 🎯 [코드 참고사항: 네이버 쇼핑 가드레일 (Guardrail-by-Design)]
 # 1. 3단계 방어선 구현 (BaseGuardrail 상속):
 #    - validate_input: 빈 쿼리 사전 차단
 #    - validate_tool_args: API 호출 전 파라미터 규격(정규식, 경계값, 허용치) 엄격 검증

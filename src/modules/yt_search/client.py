@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
-# 🎯 [교수님 채점 포인트: YouTube Data API v3 검색 클라이언트]
+# 🎯 [코드 참고사항: YouTube Data API v3 검색 클라이언트]
 # 1. 하네스 룰 1-1 준수 (Rule 1-1 Fallback Mock Data Contract):
 #    - YouTube API Quota(일 10,000 unit 제한) 초과 또는 5xx/Timeout 발생 시
 #      정상 응답과 100% 동일한 items -> id -> videoId/channelId 및 snippet 구조의 폴백 데이터 반환
