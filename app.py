@@ -42,6 +42,18 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# 좌측 상단 및 사이드바 공식 로고 (SK AI Leader Academy SKALA)
+LOGO_PATH = os.path.join(PROJECT_ROOT, "assets", "skala_brand_logo.png")
+ICON_PATH = os.path.join(PROJECT_ROOT, "assets", "sk_icon.png")
+
+if os.path.exists(LOGO_PATH):
+    st.logo(
+        image=LOGO_PATH,
+        link="https://www.2026skala.co.kr",
+        icon_image=ICON_PATH if os.path.exists(ICON_PATH) else None,
+        size="large",
+    )
+
 st.markdown(
     """
     <style>
@@ -382,9 +394,8 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> Any:
 # ⚙️ 4. 사이드바: 시스템 환경 및 API 키 관리
 # ==============================================================================
 with st.sidebar:
-    st.image("https://img.icons8.com/clouds/100/artificial-intelligence.png", width=70)
     st.title("SKALA 제어판")
-    st.caption("v1.0.0 | LangChain Multi-Worker")
+    st.caption("SK AI Leader Academy | Multi-Worker Platform")
 
     st.markdown("---")
     st.subheader("🤖 LLM 모델 설정")
