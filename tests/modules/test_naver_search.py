@@ -301,6 +301,14 @@ def test_search_naver_blog_openapi_failure_fallback_via_tool(mock_get):
     assert "[Fallback Mock]" in res
 
 
+@patch("src.modules.naver_search.client.requests.get")
+def test_search_naver_news_openapi_failure_fallback_via_tool(mock_get):
+    """handoff/04_testing_harness.md 3.3 - 뉴스 검색 도구도 폴백 목 데이터가 Tool 계층까지 전파되는지 검증."""
+    mock_get.side_effect = requests.exceptions.Timeout("Read timed out")
+    res = search_naver_news.invoke({"query": "AI 트렌드", "display": 1})
+    assert "[Fallback Mock]" in res
+
+
 def test_naver_search_registry_discovery():
     from src.core.registry import ModuleRegistry
     registry = ModuleRegistry()
