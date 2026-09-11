@@ -1,4 +1,6 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+
+from langchain_core.messages import AIMessage
 
 from src.core.scenario_registry import ScenarioRegistry
 from src.scenarios.naver_trend_analysis.scenario import (
@@ -195,12 +197,15 @@ def test_keyword_audience_segmentation_calls_tools_and_is_discovered():
     params = KeywordAudienceSegmentationParams(
         category_code="50000000", keyword="니트", start_date="2026-01-01", end_date="2026-03-01",
     )
-    result = scenario.execute(params, tools)
+    result = scenario.execute(params, tools)  # context 없음 -> 문장형 폴백 경로
 
     assert lookup.invoke.call_count == 1
     assert gender.invoke.call_count == age.invoke.call_count == 1
-    assert "가장 관심도 높은 성별: f" in result
-    assert "가장 관심도 높은 연령대: 40대" in result
+    # 표/글머리 기호가 아니라 자연어 문장으로 결론이 먼저 나와야 한다.
+    assert "#### " not in result
+    assert "- 2026-01-01" not in result
+    assert "여성의 관심도가 가장 높게 나타나" in result
+    assert "40대의 관심도가 가장 높았습니다" in result
 
     registry = ScenarioRegistry()
     registry.discover_scenarios()
@@ -209,6 +214,32 @@ def test_keyword_audience_segmentation_calls_tools_and_is_discovered():
         "naver_target_audience_validation",
         "naver_keyword_audience_segmentation",
     } <= set(item.name for item in registry.get_all_scenarios())
+
+
+def test_keyword_audience_segmentation_uses_llm_when_provided_in_context():
+    """context에 llm이 주어지면 표/숫자 나열이 아니라 LLM이 생성한 문단을 그대로 반환해야 한다."""
+    scenario = KeywordAudienceSegmentationScenario()
+    gender = _tool("[니트]\n  - 2026-01-01 (f): 100\n  - 2026-01-01 (m): 20")
+    age = _tool("[니트]\n  - 2026-01-01 (40): 100\n  - 2026-01-01 (20): 10")
+    tools = {
+        "find_naver_category_code": _lookup_tool("50000000"),
+        "get_shopping_keyword_gender_trend": gender,
+        "get_shopping_keyword_age_trend": age,
+    }
+    params = KeywordAudienceSegmentationParams(
+        category_code="50000000", keyword="니트", start_date="2026-01-01", end_date="2026-03-01",
+    )
+
+    mock_llm = MagicMock()
+    with patch("src.scenarios.naver_trend_analysis.scenario.ChatPromptTemplate.from_messages") as mock_prompt_cls:
+        mock_chain = MagicMock()
+        mock_chain.invoke.return_value = AIMessage(content="니트는 여성 40대 중심으로 타겟팅하는 것이 좋습니다.")
+        mock_prompt_cls.return_value.__or__.return_value = mock_chain
+
+        result = scenario.execute(params, tools, context={"llm": mock_llm})
+
+    assert result.strip() == "니트는 여성 40대 중심으로 타겟팅하는 것이 좋습니다."
+    mock_chain.invoke.assert_called_once()
 
 
 def test_category_code_resolution_falls_back_when_lookup_has_no_candidates():

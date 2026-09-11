@@ -2,6 +2,7 @@ import re
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Type
 
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel, Field
 
@@ -98,6 +99,79 @@ def _top_segment(points: List[Tuple[str, Optional[str], float]]) -> Optional[Tup
         return None
     top_group = max(grouped, key=grouped.get)
     return top_group, grouped[top_group]
+
+
+_GENDER_KR = {"m": "남성", "f": "여성"}
+
+
+def _narrate_keyword_segmentation(
+    llm: Optional[Any],
+    keyword: str,
+    start_date: str,
+    end_date: str,
+    gender_result: str,
+    age_result: str,
+    gender_top: Optional[Tuple[str, float]],
+    age_top: Optional[Tuple[str, float]],
+) -> str:
+    """성별·연령 분포 데이터를 표/숫자 나열이 아니라 결론 중심의 자연어 문단으로 설명한다.
+
+    LLM이 주어지면(일반적으로 AgentRunner가 context로 주입) 원본 데이터를 근거로 자연스러운
+    설명을 생성하고, LLM을 쓸 수 없는 상황(예: 단위 테스트, LLM 호출 실패)에는 이미 계산된
+    최고 세그먼트를 문장으로 풀어 쓰는 결정론적 폴백을 사용한다.
+    """
+    if llm is not None:
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "당신은 마케팅 데이터 분석가입니다. 네이버쇼핑 검색 클릭 데이터를 바탕으로 "
+                "광고 타겟팅에 바로 참고할 수 있는 결론을 설명하십시오.\n"
+                "반드시 지켜야 할 규칙:\n"
+                "1. 표, 글머리 기호, 날짜별 숫자 나열 없이 자연스러운 문단(2~4문장)으로만 작성하십시오.\n"
+                "2. 어떤 성별·연령대를 중심으로 타겟팅해야 하는지 결론을 가장 먼저 명확히 제시하십시오.\n"
+                "3. 근거가 되는 수치를 인용할 때는 문장 속에 자연스럽게 녹여 쓰십시오 (표 형태 금지).\n"
+                "4. ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량이 아니라는 점과, "
+                "관심도가 낮은 세그먼트라도 광고 타겟에서 배제할 근거는 아니라는 점을 결론 뒤에 자연스럽게 덧붙이십시오.\n"
+                "5. 제공된 데이터에 없는 내용은 추측하거나 지어내지 마십시오.",
+            ),
+            (
+                "human",
+                "키워드: {keyword}\n조회 기간: {start_date} ~ {end_date}\n\n"
+                "[성별 분포 원본 데이터]\n{gender_result}\n\n"
+                "[연령대별 분포 원본 데이터]\n{age_result}\n\n"
+                "[참고: 이미 계산된 최고 관심 세그먼트] 성별: {gender_top}, 연령대: {age_top}",
+            ),
+        ])
+        try:
+            chain = prompt | llm
+            response = chain.invoke({
+                "keyword": keyword,
+                "start_date": start_date,
+                "end_date": end_date,
+                "gender_result": gender_result,
+                "age_result": age_result,
+                "gender_top": f"{_GENDER_KR.get(gender_top[0], gender_top[0])} (ratio {gender_top[1]})" if gender_top else "판단 불가",
+                "age_top": f"{age_top[0]}대 (ratio {age_top[1]})" if age_top else "판단 불가",
+            })
+            text = response.content if hasattr(response, "content") else str(response)
+            if text and text.strip():
+                return text.strip()
+        except Exception:
+            pass  # LLM 호출 실패 시 아래 결정론적 폴백으로 진행
+
+    # LLM을 쓸 수 없을 때의 폴백: 이미 계산된 최고 세그먼트를 문장으로 풀어 쓴다.
+    sentences = [f"'{keyword}'을(를) 실제로 검색하는 사람들의 분포를 {start_date}~{end_date} 기간 데이터로 살펴봤습니다."]
+    if gender_top:
+        gender_kr = _GENDER_KR.get(gender_top[0], gender_top[0])
+        sentences.append(f"성별로는 {gender_kr}의 관심도가 가장 높게 나타나(상대 지수 {gender_top[1]}), 광고를 집행한다면 {gender_kr}을(를) 우선순위로 고려할 만합니다.")
+    else:
+        sentences.append("성별 분포는 데이터가 부족해 판단하기 어렵습니다.")
+    if age_top:
+        sentences.append(f"연령대로는 {age_top[0]}대의 관심도가 가장 높았습니다(상대 지수 {age_top[1]}).")
+    else:
+        sentences.append("연령대별 분포도 데이터가 부족해 판단하기 어렵습니다.")
+    sentences.append("다만 이 수치는 조회 구간 내 최댓값을 100으로 환산한 상대값으로 실제 검색량이나 구매자 수를 의미하지 않으며, 관심도가 낮게 나온 세그먼트라도 광고 타겟에서 배제할 근거로 보기는 어렵습니다.")
+    return " ".join(sentences)
 
 
 def _default_start() -> str:
@@ -391,17 +465,15 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
             if candidate and (age_top is None or candidate[1] > age_top[1]):
                 age_top = candidate
 
-        gender_line = f"- 가장 관심도 높은 성별: {gender_top[0]} (ratio {gender_top[1]})" if gender_top else "- 판단 불가 (데이터 없음)"
-        age_line = f"- 가장 관심도 높은 연령대: {age_top[0]}대 (ratio {age_top[1]})" if age_top else "- 판단 불가 (데이터 없음)"
-
         note_block = f"{code_note}\n\n" if code_note else ""
-        return (
-            f"### '{params.keyword}' 키워드 타겟팅 세분화\n"
-            f"{note_block}"
-            f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
-            f"#### 1. 성별 분포\n{gender_result}\n\n"
-            f"#### 2. 연령대별 분포\n{age_result}\n\n"
-            f"#### 3. 요약\n{gender_line}\n{age_line}\n\n"
-            "ratio는 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량·구매자 수가 아닙니다. "
-            "특정 세그먼트가 높다고 해서 다른 세그먼트를 광고 타겟에서 배제해야 한다는 뜻은 아닙니다."
+        summary = _narrate_keyword_segmentation(
+            llm=context.get("llm") if context else None,
+            keyword=params.keyword,
+            start_date=params.start_date,
+            end_date=params.end_date,
+            gender_result=gender_result,
+            age_result=age_result,
+            gender_top=gender_top,
+            age_top=age_top,
         )
+        return f"{note_block}{summary}"
