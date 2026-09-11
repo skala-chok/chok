@@ -191,6 +191,26 @@ class TestInstagramOpenApiFallbackHarness:
         assert len(bd["media"]["data"]) >= 1
         assert "[Fallback Mock]" in bd["media"]["data"][0]["caption"]
 
+    @patch("requests.get")
+    def test_get_business_discovery_fallback_domain_neutral(self, mock_get):
+        """장애 발생 시 폴백 목 데이터가 특정 맛집에 편향되지 않고 범용 브랜드 템플릿을 반환하는지 검증."""
+        mock_get.side_effect = requests.exceptions.RequestException("Network down")
+
+        client = InstagramApiClient()
+        res = client.get_business_discovery("oliveyoung_official")
+
+        bd = res["business_discovery"]
+        # 맛집/외식 키워드가 없어야 함
+        for forbidden in ["맛집", "파스타", "회식", "미식 가이드"]:
+            assert forbidden not in bd["biography"]
+            for m in bd["media"]["data"]:
+                assert forbidden not in m["caption"]
+
+        # 일반 브랜드 및 공식 프로모션 키워드 포함 검증
+        assert "공식" in bd["biography"]
+        assert "신제품" in bd["media"]["data"][0]["caption"]
+
+
 
 class TestInstagramGuardrails:
     def test_validate_search_hashtag_id(self):
