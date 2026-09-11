@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import date
 from typing import Any, Callable, Dict, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -98,8 +99,17 @@ class AgentRunner:
             self.router = None
 
         # Assemble Prompt for Fallback General Agent
+        # 시스템 프롬프트에 현재 날짜를 명시하지 않으면 LLM이 "최근 N개월" 같은 상대적 기간을
+        # 학습 데이터 기준으로 잘못 추측한다 (예: 2026년 요청을 2023년으로 계산). run()에서
+        # 매 요청마다 실제 오늘 날짜를 {current_date}로 채워 넣는다.
+        system_prompt_with_date = (
+            self.system_prompt_text
+            + "\n\n오늘 날짜(YYYY-MM-DD): {current_date}\n"
+            "'최근 N개월', '지난달', '올해' 같은 상대적 기간 표현은 반드시 이 날짜를 기준으로 계산하십시오. "
+            "임의의 다른 연도를 가정하지 마십시오."
+        )
         prompt = ChatPromptTemplate.from_messages([
-            ("system", self.system_prompt_text),
+            ("system", system_prompt_with_date),
             MessagesPlaceholder(variable_name="chat_history", optional=True),
             ("human", "{input}"),
             MessagesPlaceholder(variable_name="agent_scratchpad"),
@@ -243,7 +253,9 @@ class AgentRunner:
         invoke_config: Dict[str, Any] = {}
         if callbacks:
             invoke_config["callbacks"] = callbacks
-        result = self.executor.invoke({"input": query}, config=invoke_config)
+        result = self.executor.invoke(
+            {"input": query, "current_date": date.today().isoformat()}, config=invoke_config
+        )
         elapsed_agent = time.time() - start_agent
         output_text = (
             result.get("output", "") if isinstance(result, dict) else str(result)
