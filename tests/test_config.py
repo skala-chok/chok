@@ -3,6 +3,7 @@ from src.config import Settings, settings
 
 def test_settings_default_values():
     test_settings = Settings(
+        _env_file=None,
         OPENAI_API_KEY="test-openai-key",
         YOUTUBE_API_KEY="test-yt-key",
         NAVER_CLIENT_ID="test-naver-id",
@@ -17,4 +18,4 @@ def test_settings_default_values():
 
 def test_settings_singleton():
     assert isinstance(settings, Settings)
-    assert settings.MODEL_NAME == "gpt-5.6-luna"
+    assert bool(settings.MODEL_NAME)

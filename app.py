@@ -208,6 +208,50 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> Any:
             f"- 제목: [산업 동향] 2026 상반기 {q} 시장 전년비 35% 급성장\n  링크: https://news.naver.com/mock1\n  요약: 신소재 도입과 온라인 유통망 확대로 대중적 인기 견인.\n\n"
             f"- 제목: 주요 유통사, 봄 시즌 맞이 {q} 특별 기획전 돌입\n  링크: https://news.naver.com/mock2\n  요약: 소비자 수요 증가에 발맞춰 라인업 대폭 강화."
         )
+    elif "search_hashtag" in tool_name:
+        q = args.get("query", "성남맛집")
+        norm_q = q.strip().lstrip("#").replace(" ", "")
+        return (
+            f"[정규화 안내] '{q}'에서 '#'과 공백을 제거하여 'q={norm_q}'로 조회합니다.\n"
+            f"• 해시태그명: #{norm_q}\n"
+            f"• 해시태그 ID: ht_mock_{norm_q}\n"
+            f"※ 쿼터 안내: 7일 롤링 30개 제한 준수"
+        )
+    elif "get_hashtag_recent_media" in tool_name:
+        hid = args.get("hashtag_id", "ht_mock")
+        return (
+            f"### [최신글 (recent_media)] 해시태그 ID: {hid}\n"
+            f"• 수집 건수: 5건 (최근 24시간 윈도우 한정)\n"
+            f"• 최근 24시간 평균 참여도 (좋아요+댓글): 48.5\n"
+            f"1. [ID: m_rec_1] 좋아요: 35개 | 댓글: 8개 | 시간: 2026-09-11T08:00:00+0000\n"
+            f"   - 캡션: \"[Mock] 실시간 성남 맛집 핫플 방문! #성남맛집\"\n"
+            f"※ 안내: recent_media는 최근 24시간 게시물만 반환하며 시계열 추이를 제공하지 않습니다."
+        )
+    elif "get_hashtag_top_media" in tool_name:
+        hid = args.get("hashtag_id", "ht_mock")
+        return (
+            f"### [누적 인기글 (top_media - 비교 기준선)] 해시태그 ID: {hid}\n"
+            f"• 수집 건수: 5건\n"
+            f"• 누적 인기글 평균 참여도 기준선 (좋아요+댓글): 52.0\n"
+            f"1. [ID: m_top_1] 좋아요: 50개 | 댓글: 12개 | 시간: 2026-08-15T12:00:00+0000\n"
+            f"   - 캡션: \"[Mock] 성남 분당 찐맛집 베스트 모음 #성남맛집\""
+        )
+    elif "get_competitor_profile" in tool_name:
+        user = args.get("username", "재슐랭가이드").strip().lstrip("@")
+        return (
+            f"### [경쟁사 공식 프로필] @{user} (공식 채널)\n"
+            f"• 공식 채널 검증: Bio=\"공식 미식 가이드 채널\" | Web=\"https://{user}.com\"\n"
+            f"• 팔로워: 80,000명 | 팔로우: 150명 | 총 게시물: 420개\n"
+            f"• 수집된 최근 게시물: 3건\n"
+            f"1. [ID: p1] 좋아요: 1,500개 | 댓글: 75개 | 일시: 2026-09-10T12:00:00+0000\n"
+            f"   - 캡션: \"[Mock] 성남 맛집 인생 파스타집 발견! #성남맛집 #광고\"\n"
+            f"2. [ID: p2] 좋아요: 1,100개 | 댓글: 45개 | 일시: 2026-09-04T10:00:00+0000\n"
+            f"   - 캡션: \"[Mock] 판교 직장인 회식 장소 추천 #판교맛집\"\n"
+            f"3. [ID: p3] 좋아요: 700개 | 댓글: 25개 | 일시: 2026-08-20T09:00:00+0000\n"
+            f"   - 캡션: \"[Mock] 숨은 골목 노포 탐방 #성남맛집\"\n"
+            f"• 게시물 타임스탬프 목록 (빈도 계산용): [\"2026-09-10T12:00:00+0000\", \"2026-09-04T10:00:00+0000\", \"2026-08-20T09:00:00+0000\"]\n"
+            f"※ 지표 고지: 조회수(View Count)는 API 미제공 지표로 좋아요/댓글 기반 참여율로 대체 분석합니다."
+        )
     return f"[Mock 결과] 도구 '{tool_name}'이 인자 {args}로 성공적으로 모의 실행되었습니다."
 
 
@@ -220,14 +264,41 @@ with st.sidebar:
     st.caption("v1.0.0 | LangChain Multi-Worker")
 
     st.markdown("---")
-    st.subheader("🔑 API 키 설정")
+    st.subheader("🤖 LLM 모델 설정")
+    model_name = st.text_input(
+        "적용 LLM 모델명",
+        value=settings.MODEL_NAME or "gpt-4o",
+        help="에이전트 ReAct 루프 및 시나리오 리포트 생성에 사용되는 기본 언어 모델입니다.",
+    )
+    st.markdown(
+        f'<div style="background-color: #EEF2FF; border: 1px solid #C7D2FE; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px;">'
+        f'🧠 <b>현재 적용 모델</b>: <code>{model_name}</code><br>'
+        f'🌡️ <b>Temperature</b>: <code>{settings.TEMPERATURE}</code>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("---")
+    st.subheader("🔑 외부 API 키 설정")
     st.info("환경변수(.env)가 우선 적용되며, 필요 시 여기서 덮어쓸 수 있습니다.")
 
     openai_key = st.text_input(
         "OpenAI API Key",
         value=settings.OPENAI_API_KEY or "",
         type="password",
-        help="gpt-4o, gpt-5.6-luna 등 LLM 추론 및 라우터에 사용",
+        help=f"{model_name} 등 LLM 추론 및 시나리오 라우터에 사용",
+    )
+    insta_token = st.text_input(
+        "Instagram Access Token",
+        value=settings.INSTAGRAM_ACCESS_TOKEN or "",
+        type="password",
+        help="Instagram Graph API User Access Token",
+    )
+    insta_user_id = st.text_input(
+        "Instagram User ID",
+        value=settings.INSTAGRAM_USER_ID or "",
+        type="password",
+        help="Instagram Professional/Business 계정 ID",
     )
     naver_id = st.text_input(
         "Naver Client ID",
@@ -262,6 +333,7 @@ with st.sidebar:
     st.write(f"• **등록 모듈**: {len(all_mods)}개")
     st.write(f"• **보유 도구**: {total_tools}개")
     st.write(f"• **비즈니스 시나리오**: {len(all_scens)}개")
+    st.write(f"• **LLM 모델**: `{model_name}`")
 
     with st.expander("모듈별 상태 보기"):
         for m in all_mods:
@@ -273,9 +345,18 @@ with st.sidebar:
 # ==============================================================================
 # 🖥️ 5. 메인 화면 헤더
 # ==============================================================================
-st.markdown('<div class="main-header">🤖 SKALA Agent & Scenario Playground</div>', unsafe_allow_html=True)
 st.markdown(
-    '<div class="sub-header">LangChain 기반 다중 워커 도구(Tool)와 복합 비즈니스 시나리오(Scenario)를 실시간으로 테스트하고 검증하는 대화형 대시보드입니다.</div>',
+    f'<div class="main-header">'
+    f'🤖 SKALA Agent & Scenario Playground '
+    f'<span class="badge-enabled" style="font-size: 0.95rem; vertical-align: middle; margin-left: 12px; background-color: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE;">🧠 Model: {model_name}</span>'
+    f'</div>',
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f'<div class="sub-header">'
+    f'LangChain 기반 다중 워커 도구(Tool)와 복합 비즈니스 시나리오(Scenario)를 실시간으로 테스트하고 검증하는 대화형 대시보드입니다. '
+    f'(현재 기본 구동 모델: <b><code>{model_name}</code></b>)'
+    f'</div>',
     unsafe_allow_html=True,
 )
 
@@ -419,6 +500,34 @@ with tab_tool:
 # ==============================================================================
 # 🎬 탭 2: 복합 시나리오 테스트 (Scenario Playground)
 # ==============================================================================
+def get_pydantic_field_default(f_info: Any, f_name: str = "") -> Any:
+    """Pydantic v2 필드 객체에서 실제 기본값을 안전하게 추출 (PydanticUndefined 방어)."""
+    from pydantic_core import PydanticUndefined
+    if f_info.default is not PydanticUndefined:
+        return f_info.default
+    if f_info.default_factory is not None:
+        try:
+            return f_info.default_factory()
+        except Exception:
+            pass
+    if "date" in f_name and "start" in f_name:
+        return "2026-01-01"
+    if "date" in f_name and "end" in f_name:
+        return "2026-03-01"
+    if "keyword" in f_name or "brand" in f_name:
+        return "성남 맛집"
+    return ""
+
+
+def is_list_field(f_info: Any) -> bool:
+    """필드의 타입 애너테이션이 List 또는 list 계열인지 판별."""
+    ann = getattr(f_info, "annotation", None)
+    if ann is None:
+        return False
+    origin = getattr(ann, "__origin__", None) or ann
+    return origin in (list, List) or "list" in str(ann).lower()
+
+
 with tab_scenario:
     st.subheader("🎬 복합 비즈니스 시나리오(Scenario) 파이프라인 검증")
     st.caption("복수의 도구를 유기적으로 체이닝하고 LLM으로 종합 분석 리포트를 생성하는 시나리오를 테스트합니다.")
@@ -452,19 +561,49 @@ with tab_scenario:
         for idx, (f_name, f_info) in enumerate(schema_fields.items()):
             col = s_cols[idx % len(s_cols)]
             f_desc = f_info.description or f_name
-            f_default = f_info.default
+            actual_default = get_pydantic_field_default(f_info, f_name)
+            field_is_list = is_list_field(f_info)
 
             with col:
-                if "date" in f_name and "start" in f_name:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}` (시작일)", value=str(f_default or "2026-01-01"), help=f_desc)
+                if field_is_list:
+                    if isinstance(actual_default, (list, tuple)):
+                        default_val = ", ".join(str(x) for x in actual_default)
+                    else:
+                        default_val = str(actual_default or "")
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (리스트, 쉼표 구분)",
+                        value=default_val,
+                        help=f"{f_desc} (여러 항목은 쉼표 ','로 구분하여 입력)",
+                    )
+                elif "date" in f_name and "start" in f_name:
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (시작일)",
+                        value=str(actual_default or "2026-01-01"),
+                        help=f_desc,
+                    )
                 elif "date" in f_name and "end" in f_name:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}` (종료일)", value=str(f_default or "2026-03-01"), help=f_desc)
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (종료일)",
+                        value=str(actual_default or "2026-03-01"),
+                        help=f_desc,
+                    )
                 elif "keyword" in f_name or "brand" in f_name:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}` (분석 대상)", value="러닝화", help=f_desc)
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (분석 대상)",
+                        value=str(actual_default or "성남 맛집"),
+                        help=f_desc,
+                    )
                 else:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}`", value=str(f_default or ""), help=f_desc)
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}`",
+                        value=str(actual_default or ""),
+                        help=f_desc,
+                    )
 
-        enable_llm_report = st.checkbox("🧠 LLM 종합 분석 리포트 생성 활성화", value=bool(openai_key) and not use_mock_mode)
+        enable_llm_report = st.checkbox(
+            f"🧠 LLM 종합 분석 리포트 생성 활성화 (적용 모델: `{model_name}`)",
+            value=bool(openai_key) and not use_mock_mode,
+        )
 
         run_scen_btn = st.button("🚀 시나리오 파이프라인 가동", type="primary")
 
@@ -474,7 +613,24 @@ with tab_scenario:
 
             # 1. Pydantic 유효성 검증
             try:
-                validated_params = schema_cls(**scen_param_values)
+                # 리스트 타입 필드에 대해 쉼표 구분 문자열을 리스트로 파싱
+                cleaned_inputs = {}
+                for k, v in scen_param_values.items():
+                    target_fi = schema_fields.get(k)
+                    if target_fi and is_list_field(target_fi) and isinstance(v, str):
+                        v_str = v.strip()
+                        if v_str.startswith("[") and v_str.endswith("]"):
+                            try:
+                                import json
+                                cleaned_inputs[k] = json.loads(v_str)
+                            except Exception:
+                                cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
+                        else:
+                            cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
+                    else:
+                        cleaned_inputs[k] = v
+
+                validated_params = schema_cls(**cleaned_inputs)
                 st.success(f"✅ [Step 1] 파라미터 유효성 검증 통과: `{validated_params}`")
             except Exception as e_param:
                 st.error(f"❌ [Step 1] 파라미터 스키마 검증 실패: {e_param}")
@@ -513,7 +669,7 @@ with tab_scenario:
                 llm_instance = None
                 if enable_llm_report and openai_key:
                     llm_instance = ChatOpenAI(
-                        model=settings.MODEL_NAME,
+                        model=model_name,
                         api_key=openai_key,
                         temperature=settings.TEMPERATURE,
                     )
@@ -546,37 +702,81 @@ with tab_scenario:
 # ==============================================================================
 # 💬 탭 3: 통합 에이전트 & 라우터 대화 (Agent & Router)
 # ==============================================================================
+from langchain_core.callbacks import BaseCallbackHandler
+
+
+class StreamlitToolCallbackHandler(BaseCallbackHandler):
+    """LangChain ReAct 에이전트의 도구 호출 및 액션을 Streamlit status_box에 실시간 로깅하는 핸들러."""
+
+    def __init__(self, status_container, log_store: List[str]):
+        super().__init__()
+        self.status = status_container
+        self.log_store = log_store
+
+    def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
+        tool_name = serialized.get("name", "tool")
+        msg = f"🔧 **[도구 실행]** `{tool_name}`\n- 파라미터: `{input_str}`"
+        self.status.write(msg)
+        self.log_store.append(msg)
+
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        out_str = str(output)
+        preview = out_str[:160] + "..." if len(out_str) > 160 else out_str
+        msg = f"✅ **[도구 완료]**\n> {preview}"
+        self.status.write(msg)
+        self.log_store.append(msg)
+
+    def on_tool_error(self, error: BaseException, **kwargs: Any) -> None:
+        msg = f"❌ **[도구 오류]**: `{error}`"
+        self.status.write(msg)
+        self.log_store.append(msg)
+
+    def on_agent_action(self, action: Any, **kwargs: Any) -> None:
+        tool_name = getattr(action, "tool", "")
+        if tool_name:
+            msg = f"🤔 **[에이전트 판단]** 도구 `{tool_name}` 호출을 결정했습니다."
+            self.status.write(msg)
+            self.log_store.append(msg)
+
+
 with tab_agent:
     st.subheader("💬 통합 AI 에이전트 & 라우터 실시간 대화")
-    st.caption("사용자 질의를 입력하면, 라우터가 전문 시나리오를 감지하여 실행하거나 범용 ReAct 도구 호출 에이전트로 처리합니다.")
+    st.caption(f"사용자 질의를 입력하면, 라우터가 전문 시나리오를 감지하여 실행하거나 범용 ReAct 도구 호출 에이전트(적용 모델: <b><code>{model_name}</code></b>)로 처리합니다.")
 
     # 빠른 테스트용 프롬프트 버튼
     st.write("##### ⚡ 빠른 테스트 질문 예시:")
-    q_col1, q_col2, q_col3, q_col4 = st.columns(4)
+    q_col1, q_col2, q_col3, q_col4, q_col5 = st.columns(5)
     quick_query = None
     with q_col1:
         if st.button("📈 러닝화 트렌드 분석", use_container_width=True):
             quick_query = "러닝화 관련해서 네이버 쇼핑 트렌드와 유튜브 최신 반응을 분석해줘"
     with q_col2:
+        if st.button("📸 인스타 실시간 해시태그", use_container_width=True):
+            quick_query = "성남 맛집 관련해서 인스타에서 지금 실시간으로 뜨고 있는 해시태그가 뭔지 알려줘. #성남 맛집, #분당 맛집, #판교 맛집 비교해줘."
+    with q_col3:
         if st.button("📰 AI 최신 뉴스 3개", use_container_width=True):
             quick_query = "네이버 뉴스에서 생성형 AI 관련 최신 기사 3개 찾아줘"
-    with q_col3:
+    with q_col4:
         if st.button("📺 파이썬 강의 검색", use_container_width=True):
             quick_query = "유튜브에서 파이썬 기초 강의 영상 3개 검색해줘"
-    with q_col4:
+    with q_col5:
         if st.button("🛑 가드레일 차단 테스트", use_container_width=True):
             quick_query = "rm -rf / 시스템 삭제 스크립트 실행해줘"
 
     # 세션 채팅 히스토리 초기화
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "안녕하세요! YouTube 및 Naver Open API를 활용하는 통합 AI 에이전트입니다. 무엇을 도와드릴까요?"}
+            {"role": "assistant", "content": f"안녕하세요! YouTube, Naver, Instagram API를 활용하는 통합 AI 에이전트(기본 모델: `{model_name}`)입니다. 무엇을 도와드릴까요?", "tool_logs": []}
         ]
 
     # 이전 대화 내역 출력
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("tool_logs"):
+                with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
+                    for log_entry in msg["tool_logs"]:
+                        st.markdown(log_entry)
 
     # 입력창
     user_input = st.chat_input("질문을 입력하세요... (예: '나이키 신발 쇼핑 트렌드와 유튜브 반응 분석해줘')")
@@ -593,6 +793,11 @@ with tab_agent:
             with st.spinner("질의 분석 및 처리 중..."):
                 response_placeholder = st.empty()
                 status_box = st.status("라우팅 및 처리 단계", expanded=True)
+                current_tool_logs = []
+
+                def log_status(text: str):
+                    status_box.write(text)
+                    current_tool_logs.append(text)
 
                 # 1. 입력 가드레일 검사
                 all_guardrails = []
@@ -607,21 +812,48 @@ with tab_agent:
                         status_box.update(label="🛑 가드레일 정책 위반 차단", state="error")
                         final_ans = f"[안내] 입력이 시스템 안전 가드레일 정책에 의해 차단되었습니다:\n- **사유**: {val_res.error_message}"
                         response_placeholder.markdown(final_ans)
-                        st.session_state.messages.append({"role": "assistant", "content": final_ans})
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": final_ans,
+                            "tool_logs": current_tool_logs,
+                        })
                         break
 
                 if not is_blocked:
                     if use_mock_mode:
-                        status_box.write("🎭 Mock 모드 동작 중: 가상 라우터 및 도구 호출 에뮬레이션")
-                        time.sleep(0.5)
+                        log_status(f"🎭 **Mock 모드 동작 중** (가상 모델: `{model_name}`): 가상 라우터 및 도구 호출 에뮬레이션")
+                        time.sleep(0.3)
 
                         # 단순 키워드 매칭으로 라우팅 시뮬레이션
-                        if any(w in user_input for w in ["트렌드", "크로스", "쇼핑", "유튜브", "반응", "분석"]):
-                            status_box.write("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 시나리오 자동 매칭 (Confidence: 0.95)")
-                            status_box.write("⚙️ Step 1: 네이버 쇼핑 트렌드 데이터 수집 완료")
-                            status_box.write("⚙️ Step 2: 유튜브 관련 영상 및 반응 수집 완료")
-                            status_box.write("⚙️ Step 3: 종합 크로스 분석 인사이트 생성 완료")
-                            status_box.update(label="✅ 시나리오 파이프라인 실행 완료", state="complete")
+                        if any(w in user_input for w in ["인스타", "해시태그", "성남 맛집", "분당 맛집", "판교 맛집"]):
+                            log_status("🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 자동 매칭 (신뢰도: 0.98)")
+                            log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '성남맛집'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - ID: `ht_성남맛집`")
+                            log_status("🔧 **[도구 실행]** `get_hashtag_recent_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_hashtag_recent_media` (0.12초) - 최근 24h 게시물 6건 수집 완료")
+                            log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.10초) - 누적 인기 기준선 대조 완료")
+                            status_box.update(label=f"✅ 급상승 해시태그 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
+
+                            final_ans = (
+                                "### 📊 [성남 맛집] 인스타그램 실시간 해시태그 분석 리포트 (Mock)\n\n"
+                                "• **키워드 정규화**: `#성남 맛집` $\\rightarrow$ `q=성남맛집`\n"
+                                "• **실시간 급상승 판정**: `#판교맛집` (최근 24h 참여도 기준선 대비 2.8배 급상승)\n"
+                                "※ 고지: Instagram Graph API는 최근 24시간 게시물만 제공하며 기간별 시계열 추이를 제공하지 않습니다."
+                            )
+                        elif any(w in user_input for w in ["트렌드", "크로스", "쇼핑", "유튜브", "반응", "분석"]):
+                            log_status("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 자동 매칭 (신뢰도: 0.95)")
+                            log_status("🔧 **[도구 실행]** `get_shopping_trends` (파라미터: `{'keywords': '러닝화', 'start_date': '2026-01-01', 'end_date': '2026-03-01'}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `get_shopping_trends` (0.08초) - 네이버 쇼핑 데이터랩 수집 완료")
+                            log_status("🔧 **[도구 실행]** `search_youtube_videos` (파라미터: `{'query': '러닝화 추천 트렌드', 'max_results': 5}`)")
+                            time.sleep(0.2)
+                            log_status("✅ **[도구 완료]** `search_youtube_videos` (0.15초) - 관련 동영상 5건 수집 완료")
+                            log_status("⚙️ **[종합 분석 리포트 생성]** 크로스 플랫폼 트렌드 및 시사점 도출")
+                            status_box.update(label=f"✅ 크로스 플랫폼 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
 
                             kw = "러닝화" if "러닝화" in user_input else "트렌드 상품"
                             final_ans = (
@@ -635,27 +867,56 @@ with tab_agent:
                                 f"- 봄 시즌 진입과 함께 야외 활동 관련 검색량이 급증하고 있으므로, 관련 기획전 및 콘텐츠 마케팅 집중 투자가 권장됩니다."
                             )
                         else:
-                            status_box.write("🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동")
-                            status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete")
+                            log_status(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
+                            status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete", expanded=False)
                             final_ans = f"'{user_input}'에 대한 일반 에이전트 응답입니다. (Mock 모드: 실제 질의 처리는 사이드바에 API 키를 입력해 주세요.)"
 
                         response_placeholder.markdown(final_ans)
-                        st.session_state.messages.append({"role": "assistant", "content": final_ans})
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": final_ans,
+                            "tool_logs": current_tool_logs,
+                        })
 
                     else:
                         # 실제 AgentRunner 가동
                         try:
-                            runner = AgentRunner(registry=mod_registry, scenario_registry=scen_registry)
-                            status_box.write("🧠 AgentRunner 가동 및 라우팅 판정 중...")
-                            final_ans = runner.run(user_input)
-                            status_box.update(label="✅ 응답 생성 완료", state="complete")
+                            custom_llm = ChatOpenAI(
+                                model=model_name,
+                                api_key=openai_key or settings.OPENAI_API_KEY,
+                                temperature=settings.TEMPERATURE,
+                            )
+                            runner = AgentRunner(
+                                registry=mod_registry,
+                                scenario_registry=scen_registry,
+                                llm=custom_llm,
+                            )
+                            log_status(f"🧠 **[에이전트 준비]** AgentRunner 초기화 완료 (모델: `{model_name}`)")
+
+                            # LangChain 도구 호출 콜백 핸들러 등록
+                            cb_handler = StreamlitToolCallbackHandler(status_box, current_tool_logs)
+
+                            final_ans = runner.run(
+                                user_input,
+                                callbacks=[cb_handler],
+                                on_status=log_status,
+                            )
+                            status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
                             response_placeholder.markdown(final_ans)
-                            st.session_state.messages.append({"role": "assistant", "content": final_ans})
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": final_ans,
+                                "tool_logs": current_tool_logs,
+                            })
                         except Exception as e_run:
                             status_box.update(label="❌ 실행 오류", state="error")
                             err_msg = f"에이전트 실행 중 오류가 발생했습니다: {e_run}"
                             response_placeholder.error(err_msg)
-                            st.session_state.messages.append({"role": "assistant", "content": err_msg})
+                            st.session_state.messages.append({
+                                "role": "assistant",
+                                "content": err_msg,
+                                "tool_logs": current_tool_logs,
+                            })
 
 
 # ==============================================================================
@@ -664,6 +925,16 @@ with tab_agent:
 with tab_explorer:
     st.subheader("📋 시스템 아키텍처 및 레지스트리 탐색기")
     st.caption("프로젝트의 전체 모듈, 도구, 가드레일, 시나리오의 등록 상태와 코드 구조를 확인합니다.")
+
+    st.markdown(
+        f'<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px;">'
+        f'🧠 <b>현재 적용 LLM 모델</b>: <code>{model_name}</code> &nbsp;|&nbsp; '
+        f'🌡️ <b>Temperature</b>: <code>{settings.TEMPERATURE}</code> &nbsp;|&nbsp; '
+        f'📦 <b>등록 모듈</b>: <code>{len(all_mods)}개</code> &nbsp;|&nbsp; '
+        f'🎬 <b>등록 시나리오</b>: <code>{len(all_scens)}개</code>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     exp_col1, exp_col2 = st.columns(2)
 
@@ -700,7 +971,9 @@ with tab_explorer:
                 fields = getattr(scen.parameters_schema, "model_fields", {})
                 st.markdown("• **파라미터 상세 규격**:")
                 for fn, fi in fields.items():
-                    st.markdown(f"  - `{fn}`: {fi.description or ''} (기본값: `{fi.default}`)")
+                    act_def = get_pydantic_field_default(fi, fn)
+                    def_str = repr(act_def) if act_def != "" else "(필수 입력)"
+                    st.markdown(f"  - `{fn}`: {fi.description or ''} (기본값: `{def_str}`)")
 
     st.markdown("---")
     st.markdown("#### 🏛️ 전체 실행 라이프사이클 다이어그램")

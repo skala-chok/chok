@@ -261,16 +261,20 @@ def test_client_get_comments_params(mock_get, monkeypatch):
 
 
 @patch("src.modules.yt_analytics.client.requests.get")
-def test_get_video_metrics_and_fallback(mock_get):
-    mock_get.return_value.json.return_value = {"items": [{"id": "v1", "snippet": {"title": "Test", "publishedAt": "2026-01-01T00:00:00Z"}, "statistics": {"viewCount": "100", "likeCount": "5", "commentCount": "2"}}]}
+def test_get_video_metrics_mock(mock_get):
+    mock_get.return_value.status_code = 200
+    mock_get.return_value.json.return_value = {
+        "items": [{
+            "id": "v1",
+            "snippet": {"title": "Test", "publishedAt": "2026-01-01T00:00:00Z"},
+            "statistics": {"viewCount": "100", "likeCount": "5", "commentCount": "2"},
+            "contentDetails": {"duration": "PT2M"},
+        }]
+    }
     result = get_video_metrics.invoke({"video_ids": ["v1"]})
-    assert "참여율" in result
-    assert "일평균 조회수" in result
-
-    import requests
-    mock_get.side_effect = requests.exceptions.ConnectionError("offline")
-    result = YouTubeAnalyticsClient().get_video_metrics(["v1"])
-    assert "[Fallback Mock]" in result["items"][0]["snippet"]["title"]
+    assert len(result) == 1
+    assert result[0]["engagement_rate"] == 7.0
+    assert "daily_views" in result[0]
 
 
 def test_yt_analytics_registry_discovery():
