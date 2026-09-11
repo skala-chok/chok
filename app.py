@@ -132,19 +132,36 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> str:
             f"- 러너2026: 쿠셔닝은 좋은데 발볼이 조금 좁게 나왔으니 반업 추천합니다.\n"
             f"- 쇼퍼홀릭: 지난 버전보다 훨씬 가볍고 일상용으로도 훌륭합니다."
         )
-    elif "search_naver_shopping" in tool_name:
-        q = args.get("query", "상품")
-        return (
-            f"🛍️ [Mock 네이버 쇼핑 검색 결과 - '{q}']\n"
-            f"- 상품명: 2026 베스트 {q} 프로 울트라\n  최저가: 129,000원\n  쇼핑몰: 공식브랜드스토어\n  링크: https://smartstore.naver.com/mock1\n\n"
-            f"- 상품명: 컴포트 에어 {q} 데일리 에디션\n  최저가: 89,000원\n  쇼핑몰: 트렌드샵\n  링크: https://smartstore.naver.com/mock2"
-        )
     elif "get_shopping_trends" in tool_name:
         kws = args.get("keywords", "키워드")
         return (
             f"📈 [Mock 네이버 데이터랩 쇼핑 트렌드]\n"
             f"- 키워드 '{kws}': 최근 기간 상대 검색비율 84.5% (전월 대비 +23.8% 급상승 추세)"
         )
+    elif "get_shopping_category_trend" in tool_name:
+        cats = args.get("categories", "패션의류:50000000")
+        names = [c.split(":")[0] for c in cats.split(",") if c.strip()]
+        return "📊 [Mock 쇼핑 분야별 트렌드]\n" + "\n".join(
+            f"[{n}]\n  - 2026-01-01: 100\n  - 2026-02-01: 82.4" for n in names
+        )
+    elif "get_shopping_category_gender_trend" in tool_name:
+        code = args.get("category_code", "50000000")
+        return f"📊 [Mock 분야 성별 트렌드 - {code}]\n  - 2026-01-01 (f): 100\n  - 2026-01-01 (m): 37.7"
+    elif "get_shopping_category_age_trend" in tool_name:
+        code = args.get("category_code", "50000000")
+        return f"📊 [Mock 분야 연령별 트렌드 - {code}]\n  - 2026-01-01 (20): 10.7\n  - 2026-01-01 (30): 44.4\n  - 2026-01-01 (40): 100"
+    elif "get_shopping_keyword_trend" in tool_name:
+        kws = args.get("keywords", "니트:니트")
+        names = [k.split(":")[0] for k in kws.split(",") if k.strip()]
+        return "📊 [Mock 키워드별 트렌드]\n" + "\n".join(
+            f"[{n}]\n  - 2026-01-01: 79.5\n  - 2026-02-01: 42.3" for n in names
+        )
+    elif "get_shopping_keyword_gender_trend" in tool_name:
+        kw = args.get("keyword", "니트")
+        return f"📊 [Mock 키워드 성별 트렌드 - {kw}]\n  - 2026-01-01 (f): 100\n  - 2026-01-01 (m): 23.1"
+    elif "get_shopping_keyword_age_trend" in tool_name:
+        kw = args.get("keyword", "니트")
+        return f"📊 [Mock 키워드 연령별 트렌드 - {kw}]\n  - 2026-01-01 (30): 43.5\n  - 2026-01-01 (40): 100"
     elif "search_naver_blog" in tool_name:
         q = args.get("query", "리뷰")
         return (

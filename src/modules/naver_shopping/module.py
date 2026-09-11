@@ -9,7 +9,6 @@ from langchain_core.tools import BaseTool
 from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
 from src.config import settings
 from .tools import (
-    search_naver_shopping,
     get_shopping_trends,
     get_shopping_category_trend,
     get_shopping_category_gender_trend,
@@ -29,7 +28,7 @@ class NaverShoppingModule(BaseAgentModule):
 
     @property
     def description(self) -> str:
-        return "네이버 쇼핑 최저가 및 데이터랩 트렌드 분석"
+        return "네이버 쇼핑 데이터랩 트렌드 분석"
 
     def is_enabled(self) -> bool:
         return bool(settings.NAVER_CLIENT_ID and settings.NAVER_CLIENT_SECRET)
@@ -37,7 +36,6 @@ class NaverShoppingModule(BaseAgentModule):
     def get_tools(self) -> List[BaseTool]:
         # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
         return [
-            search_naver_shopping,
             get_shopping_trends,
             get_shopping_category_trend,
             get_shopping_category_gender_trend,

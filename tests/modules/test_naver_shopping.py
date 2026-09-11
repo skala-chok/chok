@@ -1,6 +1,6 @@
 # ==============================================================================
 # 🟣 [Step 6 - 보라점] 단위 테스트 & 품질 검증 계층
-# • 역할: 네이버 쇼핑 및 데이터랩 API 응답을 Mocking하여 1초 내에 통과하는 단위 테스트를 작성합니다.
+# • 역할: 네이버 쇼핑 데이터랩/인사이트 API 응답을 Mocking하여 1초 내에 통과하는 단위 테스트를 작성합니다.
 # • 실행 명령: pytest tests/modules/test_naver_shopping.py -v
 # ==============================================================================
 
@@ -8,7 +8,6 @@ import pytest
 from unittest.mock import patch, MagicMock
 from src.modules.naver_shopping.module import NaverShoppingModule
 from src.modules.naver_shopping.tools import (
-    search_naver_shopping,
     get_shopping_trends,
     get_shopping_category_trend,
     get_shopping_category_gender_trend,
@@ -28,9 +27,8 @@ def test_naver_shopping_module_metadata():
     assert mod.name == "naver_shopping"
     assert "쇼핑" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 8
+    assert len(tools) == 7
     tool_names = [t.name for t in tools]
-    assert "search_naver_shopping" in tool_names
     assert "get_shopping_trends" in tool_names
     assert "get_shopping_category_trend" in tool_names
     assert "get_shopping_category_gender_trend" in tool_names
@@ -79,8 +77,9 @@ def test_naver_shopping_module_is_enabled(monkeypatch):
 def test_naver_shopping_context_provider():
     provider = NaverShoppingContextProvider()
     snippet = provider.get_system_prompt_snippet()
-    assert "search_naver_shopping" in snippet
     assert "get_shopping_trends" in snippet
+    assert "get_shopping_category_trend" in snippet
+    assert "get_shopping_keyword_trend" in snippet
     assert provider.get_dynamic_context("some query") is None
 
 
@@ -130,45 +129,10 @@ def test_shopping_guardrail_date_validation():
     assert valid.passed is True
 
 
-def test_shopping_guardrail_display_and_sort_validation():
-    guard = NaverShoppingGuardrail()
-
-    # display validation (1 to 10)
-    assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 5}).passed is True
-    assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 1}).passed is True
-    assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 10}).passed is True
-    assert guard.validate_tool_args("search_naver_shopping", {"query": "test"}).passed is True
-    # 문자열 정수 display 안전 캐스팅 허용
-    assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": "5"}).passed is True
-
-    res_invalid_type = guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": "abc"})
-    assert res_invalid_type.passed is False
-    assert "display" in res_invalid_type.error_message
-
-    res_too_large = guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 11})
-    assert res_too_large.passed is False
-    assert "display" in res_too_large.error_message
-
-    res_too_small = guard.validate_tool_args("search_naver_shopping", {"query": "test", "display": 0})
-    assert res_too_small.passed is False
-    assert "display" in res_too_small.error_message
-
-    # sort validation ('sim', 'date', 'asc', 'dsc')
-    for s in ["sim", "date", "asc", "dsc"]:
-        assert guard.validate_tool_args("search_naver_shopping", {"query": "test", "sort": s}).passed is True
-
-    res_invalid_sort = guard.validate_tool_args("search_naver_shopping", {"query": "test", "sort": "invalid"})
-    assert res_invalid_sort.passed is False
-    assert "sort" in res_invalid_sort.error_message
-
-    # Other tools should pass
-    assert guard.validate_tool_args("other_tool", {"display": 100}).passed is True
-
-
 def test_shopping_guardrail_html_sanitization():
     guard = NaverShoppingGuardrail()
     raw = "상품명: <b>Apple</b> 맥북 프로 &quot;16인치&quot; &amp; 가방"
-    cleaned = guard.sanitize_output("search_naver_shopping", raw)
+    cleaned = guard.sanitize_output("get_shopping_trends", raw)
     assert "<b>" not in cleaned
     assert "</b>" not in cleaned
     assert "&quot;" not in cleaned
@@ -177,116 +141,7 @@ def test_shopping_guardrail_html_sanitization():
 
     # Non-string output
     dict_output = {"data": "test"}
-    assert guard.sanitize_output("search_naver_shopping", dict_output) == dict_output
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_search_naver_shopping_mock(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {
-        "items": [
-            {
-                "title": "맥북 프로 M3",
-                "link": "https://shopping.naver.com/1",
-                "lprice": "2390000",
-                "mallName": "네이버공식몰"
-            }
-        ]
-    }
-    res = search_naver_shopping.invoke({"query": "맥북 프로", "display": 1})
-    assert "맥북 프로 M3" in res
-    assert "2,390,000" in res or "2390000" in res
-    assert "네이버공식몰" in res
-    assert "https://shopping.naver.com/1" in res
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_search_naver_shopping_price_formatting(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {
-        "items": [
-            {
-                "title": "<b>아이폰</b> 16 프로",
-                "link": "https://shopping.naver.com/iphone",
-                "lprice": "1550000",
-                "mallName": "애플스토어"
-            },
-            {
-                "title": "갤럭시 S24",
-                "link": "https://shopping.naver.com/galaxy",
-                "lprice": "1150000",
-                "mallName": "삼성공식몰"
-            }
-        ]
-    }
-    res = search_naver_shopping.invoke({"query": "스마트폰", "display": 2})
-    assert "아이폰 16 프로" in res
-    assert "<b>" not in res
-    assert "1,550,000원" in res
-    assert "1,150,000원" in res
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_search_naver_shopping_filters_zero_price(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {
-        "items": [
-            {
-                "title": "무료배포 상품",
-                "link": "https://shopping.naver.com/free",
-                "lprice": "0",
-                "mallName": "이벤트몰"
-            },
-            {
-                "title": "유료 정상 상품",
-                "link": "https://shopping.naver.com/paid",
-                "lprice": "10000",
-                "mallName": "정상몰"
-            }
-        ]
-    }
-    res = search_naver_shopping.invoke({"query": "이벤트", "display": 2})
-    assert "유료 정상 상품" in res
-    assert "10,000원" in res
-    assert "무료배포 상품" not in res
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_search_naver_shopping_all_zero_price_items(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {
-        "items": [
-            {
-                "title": "0원 상품 1",
-                "link": "https://shopping.naver.com/free1",
-                "lprice": "0",
-                "mallName": "이벤트몰"
-            },
-            {
-                "title": "0원 상품 2",
-                "link": "https://shopping.naver.com/free2",
-                "lprice": "-500",
-                "mallName": "비정상몰"
-            }
-        ]
-    }
-    res = search_naver_shopping.invoke({"query": "0원", "display": 2})
-    assert "네이버 쇼핑 검색 결과가 없습니다" in res
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_search_naver_shopping_no_items(mock_get):
-    mock_get.return_value.status_code = 200
-    mock_get.return_value.json.return_value = {"items": []}
-    res = search_naver_shopping.invoke({"query": "결과없는상품검색어", "display": 5})
-    assert "네이버 쇼핑 검색 결과가 없습니다" in res
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_search_naver_shopping_error_handling(mock_get):
-    mock_get.side_effect = RuntimeError("Connection timeout")
-    res = search_naver_shopping.invoke({"query": "노트북", "display": 1})
-    assert "네이버 쇼핑 검색 실패: Connection timeout" in res
+    assert guard.sanitize_output("get_shopping_trends", dict_output) == dict_output
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
@@ -356,34 +211,6 @@ def test_get_shopping_trends_error_handling(mock_get_datalab):
         "end_date": "2026-02-01"
     })
     assert "트렌드 분석 조회 실패: API server error" in res
-
-
-@patch("src.modules.naver_shopping.client.requests.get")
-def test_client_search_shop_params(mock_get, monkeypatch):
-    monkeypatch.setattr("src.modules.naver_shopping.client.settings.NAVER_CLIENT_ID", "test_id")
-    monkeypatch.setattr("src.modules.naver_shopping.client.settings.NAVER_CLIENT_SECRET", "test_secret")
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"items": []}
-    mock_get.return_value = mock_resp
-
-    client = NaverShoppingClient()
-    res = client.search_shop("노트북", display=3, sort="dsc")
-
-    # ⚠️ search_shop은 구 openapi.naver.com 엔드포인트를 그대로 가리키고 있어, NAVER API HUB
-    # 키로는 실제로 401이 난다 (client.py 상단 주석 참고). 여기서는 현재 코드가 보내는
-    # 요청 내용(공유 headers 프로퍼티가 NCP 포맷으로 바뀐 것)을 그대로 회귀 검증한다.
-    mock_get.assert_called_once_with(
-        "https://openapi.naver.com/v1/search/shop.json",
-        headers={
-            "X-NCP-APIGW-API-KEY-ID": "test_id",
-            "X-NCP-APIGW-API-KEY": "test_secret",
-            "Content-Type": "application/json",
-        },
-        params={"query": "노트북", "display": 3, "sort": "dsc"},
-        timeout=5,
-    )
-    assert res == {"items": []}
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
@@ -587,6 +414,9 @@ def test_shopping_insight_guardrail_validation():
     )
     assert res_ok.passed is True
 
+    # Other tools should pass
+    assert guard.validate_tool_args("other_tool", {"anything": 100}).passed is True
+
 
 def test_naver_shopping_registry_discovery():
     from src.core.registry import ModuleRegistry
@@ -599,13 +429,6 @@ def test_naver_shopping_registry_discovery():
 
 def test_guardrailed_tool_integration():
     guard = NaverShoppingGuardrail()
-    wrapped_search = wrap_tool_with_guardrails(search_naver_shopping, [guard])
-
-    # Guardrail blocks display > 10
-    block_res = wrapped_search.invoke({"query": "노트북", "display": 15})
-    assert "가드레일 검증 실패" in block_res
-    assert "display" in block_res
-
     wrapped_trend = wrap_tool_with_guardrails(get_shopping_trends, [guard])
     block_trend = wrapped_trend.invoke({
         "keywords": "노트북",
@@ -614,3 +437,12 @@ def test_guardrailed_tool_integration():
     })
     assert "가드레일 검증 실패" in block_trend
     assert "YYYY-MM-DD" in block_trend
+
+    wrapped_category = wrap_tool_with_guardrails(get_shopping_category_trend, [guard])
+    block_category = wrapped_category.invoke({
+        "categories": "a:1,b:2,c:3,d:4",
+        "start_date": "2026-01-01",
+        "end_date": "2026-02-01",
+    })
+    assert "가드레일 검증 실패" in block_category
+    assert "최대 3개" in block_category

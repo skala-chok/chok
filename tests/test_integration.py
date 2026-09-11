@@ -39,8 +39,8 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert len(enabled) == 4
 
     runner = AgentRunner(registry=registry, llm=MagicMock())
-    # yt_search(2) + yt_analytics(2) + naver_search(2) + naver_shopping(8) = 14 tools
-    assert len(runner.tools) == 14
+    # yt_search(2) + yt_analytics(2) + naver_search(2) + naver_shopping(7) = 13 tools
+    assert len(runner.tools) == 13
 
     tool_names = {t.name for t in runner.tools}
     expected_tools = {
@@ -50,7 +50,6 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
         "get_video_comments",
         "search_naver_blog",
         "search_naver_news",
-        "search_naver_shopping",
         "get_shopping_trends",
         "get_shopping_category_trend",
         "get_shopping_category_gender_trend",
@@ -65,7 +64,7 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert "YouTube 동영상 검색 및 자막 추출 가이드" in runner.system_prompt_text
     assert "YouTube 채널 통계 및 시청자 댓글 분석 가이드" in runner.system_prompt_text
     assert "네이버 블로그 및 뉴스 검색 가이드" in runner.system_prompt_text
-    assert "네이버 쇼핑 최저가 및 데이터랩 트렌드 분석 가이드" in runner.system_prompt_text
+    assert "네이버 쇼핑 데이터랩 트렌드 분석 가이드" in runner.system_prompt_text
 
 
 def test_graceful_degradation_with_partial_keys(monkeypatch):
@@ -96,8 +95,8 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     assert {m.name for m in enabled_naver} == {"naver_search", "naver_shopping"}
 
     runner_naver = AgentRunner(registry=registry_naver, llm=MagicMock())
-    # naver_search(2) + naver_shopping(8) = 10 tools
-    assert len(runner_naver.tools) == 10
+    # naver_search(2) + naver_shopping(7) = 9 tools
+    assert len(runner_naver.tools) == 9
 
     # 3. No API keys provided
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
@@ -131,7 +130,7 @@ def test_agent_runner_input_guardrail_blocking(monkeypatch):
 
 
 def test_tool_argument_guardrails_across_all_modules(monkeypatch):
-    """등록된 8개 도구 전체에서 도구 인자 가드레일이 유효성 검사를 올바르게 수행하는지 검증."""
+    """등록된 도구 전체에서 도구 인자 가드레일이 유효성 검사를 올바르게 수행하는지 검증."""
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_client_id")
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_client_secret")
@@ -170,11 +169,6 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     naver_news_res = tools_map["search_naver_news"].invoke({"query": "test", "sort": "invalid"})
     assert "[가드레일 검증 실패]" in naver_news_res
     assert "sort 옵션은 'sim' 또는 'date'만 가능합니다." in naver_news_res
-
-    # Worker 4: search_naver_shopping (display < 1)
-    naver_shop_res = tools_map["search_naver_shopping"].invoke({"query": "test", "display": 0})
-    assert "[가드레일 검증 실패]" in naver_shop_res
-    assert "display는 1 이상 10 이하여야 합니다." in naver_shop_res
 
     # Worker 4: get_shopping_trends (invalid date format)
     naver_trend_res = tools_map["get_shopping_trends"].invoke({

@@ -1,6 +1,6 @@
 # ==============================================================================
 # 🟠 [Step 2 - 주황점] 가드레일 & 데이터 정제 계층
-# • 역할: 0원 어뷰징 상품 필터링(sanitize_output) 및 날짜 형식 검증(validate_tool_args)을 작성합니다.
+# • 역할: HTML 태그 정제(sanitize_output) 및 트렌드 조회 날짜/개수 범위 검증(validate_tool_args)을 작성합니다.
 # ➔ 다음 단계: 🟡 [Step 3] tools.py 로 이동하여 쇼핑 도구를 정의하세요.
 # ==============================================================================
 
@@ -48,20 +48,6 @@ class NaverShoppingGuardrail(BaseGuardrail):
                 return GuardrailResult(passed=False, error_message=f"{pair_field}는 최소 1개 이상이어야 합니다.")
             if count > max_count:
                 return GuardrailResult(passed=False, error_message=f"{pair_field}는 최대 {max_count}개까지만 가능합니다.")
-        if tool_name == "search_naver_shopping":
-            display_raw = args.get("display")
-            if display_raw is None:
-                display = 5
-            else:
-                try:
-                    display = int(display_raw)
-                except (ValueError, TypeError):
-                    return GuardrailResult(passed=False, error_message="display는 1 이상 10 이하여야 합니다.")
-            if display > 10 or display < 1:
-                return GuardrailResult(passed=False, error_message="display는 1 이상 10 이하여야 합니다.")
-            sort = args.get("sort")
-            if sort is not None and sort not in ("sim", "date", "asc", "dsc"):
-                return GuardrailResult(passed=False, error_message="sort 옵션은 'sim', 'date', 'asc', 'dsc'만 가능합니다.")
         return GuardrailResult(passed=True)
 
     def sanitize_output(self, tool_name: str, output: Any) -> Any:

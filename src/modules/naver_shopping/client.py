@@ -10,11 +10,6 @@ from src.config import settings
 
 
 class NaverShoppingClient:
-    # ⚠️ 구 Naver Developers 포털 엔드포인트. NAVER_CLIENT_ID/SECRET이 새 NAVER API HUB
-    # 발급 키라면 이 엔드포인트는 별도 계정 체계라 인증이 통과되지 않는다(401).
-    # API HUB에는 상품/가격 단위 쇼핑 검색(shop.json)이 제공되지 않으므로,
-    # 실제 사용하려면 openapi.naver.com 쪽 Client ID/Secret을 별도로 발급받아야 한다.
-    SHOP_URL = "https://openapi.naver.com/v1/search/shop.json"
     # NAVER API HUB 검색어 트렌드 API (구 datalab/search 대체)
     DATALAB_URL = "https://naverapihub.apigw.ntruss.com/search-trend/v1/search"
     # NAVER API HUB 쇼핑 인사이트 API 묶음 (분야/키워드 x 전체/성별/연령)
@@ -40,12 +35,6 @@ class NaverShoppingClient:
     @headers.setter
     def headers(self, value: Dict[str, str]):
         self._headers = value
-
-    def search_shop(self, query: str, display: int = 5, sort: str = "sim") -> Dict[str, Any]:
-        params = {"query": query, "display": display, "sort": sort}
-        resp = requests.get(self.SHOP_URL, headers=self.headers, params=params, timeout=5)
-        resp.raise_for_status()
-        return resp.json()
 
     def get_datalab_trend(self, keywords: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
         body = {
