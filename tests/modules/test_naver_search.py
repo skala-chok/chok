@@ -131,6 +131,27 @@ def test_naver_search_html_sanitization():
     assert guard.sanitize_output("search_naver_news", dict_output) == dict_output
 
 
+def test_naver_search_pii_masking():
+    """handoff/03_guidelines.md 2절 - 사후 출력 정제 시 이메일/전화번호 마스킹 검증."""
+    guard = NaverSearchGuardrail()
+
+    raw_email = "문의사항은 contact@example.com 으로 보내주세요."
+    cleaned_email = guard.sanitize_output("search_naver_blog", raw_email)
+    assert "contact@example.com" not in cleaned_email
+    assert "[EMAIL_MASKED]" in cleaned_email
+
+    raw_phone = "사장님 연락처는 010-1234-5678 입니다."
+    cleaned_phone = guard.sanitize_output("search_naver_news", raw_phone)
+    assert "010-1234-5678" not in cleaned_phone
+    assert "[PHONE_MASKED]" in cleaned_phone
+
+    raw_both = "<b>맛집</b> 문의: owner@shop.com / 010-9999-8888"
+    cleaned_both = guard.sanitize_output("search_naver_blog", raw_both)
+    assert "<b>" not in cleaned_both
+    assert "[EMAIL_MASKED]" in cleaned_both
+    assert "[PHONE_MASKED]" in cleaned_both
+
+
 @patch("src.modules.naver_search.client.requests.get")
 def test_search_naver_blog_mock(mock_get):
     mock_get.return_value.status_code = 200

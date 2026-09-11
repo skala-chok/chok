@@ -145,6 +145,21 @@ def test_shopping_guardrail_html_sanitization():
     assert guard.sanitize_output("get_shopping_trends", dict_output) == dict_output
 
 
+def test_naver_shopping_pii_masking():
+    """handoff/03_guidelines.md 2절 - 사후 출력 정제 시 이메일/전화번호 마스킹 검증."""
+    guard = NaverShoppingGuardrail()
+
+    raw_email = "판매자 문의: seller@shop.com"
+    cleaned_email = guard.sanitize_output("get_shopping_trends", raw_email)
+    assert "seller@shop.com" not in cleaned_email
+    assert "[EMAIL_MASKED]" in cleaned_email
+
+    raw_phone = "고객센터 010-2222-3333"
+    cleaned_phone = guard.sanitize_output("get_shopping_category_trend", raw_phone)
+    assert "010-2222-3333" not in cleaned_phone
+    assert "[PHONE_MASKED]" in cleaned_phone
+
+
 @patch("src.modules.naver_shopping.client.requests.post")
 def test_get_shopping_trends_mock(mock_get_datalab):
     mock_get_datalab.return_value.status_code = 200

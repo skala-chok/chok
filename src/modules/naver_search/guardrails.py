@@ -38,5 +38,9 @@ class NaverSearchGuardrail(BaseGuardrail):
             clean = re.sub(r"<.*?>", "", output)
             # Decode HTML entities (e.g. &quot;, &amp;, &lt;, &gt;)
             clean = html.unescape(clean)
+            # Mask email addresses (블로그/뉴스 본문에 포함될 수 있는 개인정보)
+            clean = re.sub(r"[\w\.-]+@[\w\.-]+\.\w+", "[EMAIL_MASKED]", clean)
+            # Mask Korean phone numbers (010-XXXX-XXXX 등)
+            clean = re.sub(r"01[016789]-?\d{3,4}-?\d{4}", "[PHONE_MASKED]", clean)
             return clean
         return output
