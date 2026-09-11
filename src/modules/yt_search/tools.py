@@ -62,9 +62,9 @@ def get_channel_details(channel_id: str) -> Dict[str, Any]:
 
 
 @tool
-def get_channel_videos(channel_id: str, published_after: str, keyword: Optional[str] = None, max_results: int = 20) -> List[Dict[str, Any]]:
-    """Get channel videos after ISO-8601 UTC `published_after`; optional keyword narrows candidates."""
-    return _video_items(client.search_videos(keyword or "", min(max_results, 50), channel_id, published_after))
+def get_channel_videos(channel_id: str, published_after: str, published_before: Optional[str] = None, keyword: Optional[str] = None, max_results: int = 20) -> List[Dict[str, Any]]:
+    """Get channel videos inside an ISO-8601 UTC date range; optional keyword narrows candidates."""
+    return _video_items(client.search_videos(keyword or "", min(max_results, 50), channel_id, published_after, published_before))
 
 
 @tool
