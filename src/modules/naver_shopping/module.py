@@ -5,9 +5,12 @@
 # ==============================================================================
 
 from typing import List
+
 from langchain_core.tools import BaseTool
-from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
+
 from src.config import settings
+from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
+
 from .tools import (
     get_shopping_trends,
     get_shopping_category_trend,

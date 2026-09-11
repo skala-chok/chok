@@ -4,7 +4,10 @@
 # ➔ 다음 단계: 🟢 [Step 4] context.py 로 이동하여 쇼핑 지침을 작성하세요.
 # ==============================================================================
 
+from typing import Any, Dict
+
 from langchain_core.tools import tool
+
 from .client import NaverShoppingClient
 
 client = NaverShoppingClient()
@@ -12,7 +15,17 @@ client = NaverShoppingClient()
 
 @tool
 def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
-    """Query Naver Datalab search trend ratio for comma-separated keywords between start_date and end_date (YYYY-MM-DD)."""
+    """네이버 통합검색 기준 검색어 관심도 추이를 조회합니다.
+
+    Args:
+        keywords: 쉼표로 구분된 기준 키워드 문자열 (예: '아이폰16, 갤럭시S24').
+        start_date: 조회 시작일 (YYYY-MM-DD, 2017-08-01 이후).
+        end_date: 조회 종료일 (YYYY-MM-DD).
+
+    Returns:
+        키워드별 최근 상대 검색비율 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가
+        폴백(Fallback Mock) 데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
+    """
     try:
         kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
         if not kw_list:
@@ -46,7 +59,7 @@ def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
 # ==============================================================================
 
 
-def _parse_pairs(raw: str) -> dict:
+def _parse_pairs(raw: str) -> Dict[str, str]:
     """'이름:값,이름:값' 형식 문자열을 {이름: 값} 딕셔너리로 변환."""
     pairs = {}
     for chunk in raw.split(","):
@@ -60,7 +73,7 @@ def _parse_pairs(raw: str) -> dict:
     return pairs
 
 
-def _format_trend_results(data: dict) -> str:
+def _format_trend_results(data: Dict[str, Any]) -> str:
     results = data.get("results", [])
     if not results:
         return "쇼핑 인사이트 조회 결과가 없습니다."
@@ -87,6 +100,10 @@ def get_shopping_category_trend(
         start_date: 조회 시작일 (YYYY-MM-DD, 2017-08-01 이후)
         end_date: 조회 종료일 (YYYY-MM-DD)
         time_unit: 'date', 'week', 'month' 중 하나 (기본값 'month')
+
+    Returns:
+        분야별 클릭 추이 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외(잘못된 categories 형식 등) 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         cat_map = _parse_pairs(categories)
@@ -107,6 +124,10 @@ def get_shopping_category_gender_trend(
         start_date: 조회 시작일 (YYYY-MM-DD)
         end_date: 조회 종료일 (YYYY-MM-DD)
         time_unit: 'date', 'week', 'month' 중 하나 (기본값 'month')
+
+    Returns:
+        성별 클릭 추이 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         data = client.get_category_gender_trend(category_code, start_date, end_date, time_unit)
@@ -126,6 +147,10 @@ def get_shopping_category_age_trend(
         start_date: 조회 시작일 (YYYY-MM-DD)
         end_date: 조회 종료일 (YYYY-MM-DD)
         time_unit: 'date', 'week', 'month' 중 하나 (기본값 'month')
+
+    Returns:
+        연령대별 클릭 추이 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         data = client.get_category_age_trend(category_code, start_date, end_date, time_unit)
@@ -146,6 +171,10 @@ def get_shopping_keyword_trend(
         start_date: 조회 시작일 (YYYY-MM-DD)
         end_date: 조회 종료일 (YYYY-MM-DD)
         time_unit: 'date', 'week', 'month' 중 하나 (기본값 'month')
+
+    Returns:
+        키워드별 클릭 추이 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외(잘못된 keywords 형식 등) 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         kw_map = _parse_pairs(keywords)
@@ -167,6 +196,10 @@ def get_shopping_keyword_gender_trend(
         start_date: 조회 시작일 (YYYY-MM-DD)
         end_date: 조회 종료일 (YYYY-MM-DD)
         time_unit: 'date', 'week', 'month' 중 하나 (기본값 'month')
+
+    Returns:
+        키워드 성별 클릭 추이 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         data = client.get_keyword_gender_trend(category_code, keyword, start_date, end_date, time_unit)
@@ -187,6 +220,10 @@ def get_shopping_keyword_age_trend(
         start_date: 조회 시작일 (YYYY-MM-DD)
         end_date: 조회 종료일 (YYYY-MM-DD)
         time_unit: 'date', 'week', 'month' 중 하나 (기본값 'month')
+
+    Returns:
+        키워드 연령대별 클릭 추이 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
     """
     try:
         data = client.get_keyword_age_trend(category_code, keyword, start_date, end_date, time_unit)

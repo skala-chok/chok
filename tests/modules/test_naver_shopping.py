@@ -5,6 +5,7 @@
 # ==============================================================================
 
 import pytest
+import requests
 from unittest.mock import patch, MagicMock
 from src.modules.naver_shopping.module import NaverShoppingModule
 from src.modules.naver_shopping.tools import (
@@ -416,6 +417,54 @@ def test_shopping_insight_guardrail_validation():
 
     # Other tools should pass
     assert guard.validate_tool_args("other_tool", {"anything": 100}).passed is True
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_datalab_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - OpenAPI 통신 장애 시 client가 폴백 목 데이터를 반환하는지 검증."""
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+    client = NaverShoppingClient()
+    result = client.get_datalab_trend(["노트북"], "2026-01-01", "2026-02-01")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_category_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 쇼핑 인사이트(분야) 공통 헬퍼의 폴백 목 데이터 검증."""
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+
+    client = NaverShoppingClient()
+    result = client.get_category_trend({"패션의류": "50000000"}, "2026-01-01", "2026-01-31")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_keyword_gender_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 쇼핑 인사이트(키워드) 공통 헬퍼의 폴백 목 데이터 검증."""
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+    client = NaverShoppingClient()
+    result = client.get_keyword_gender_trend("50000000", "니트", "2026-01-01", "2026-01-31")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_trends_openapi_failure_fallback_via_tool(mock_post):
+    """폴백 목 데이터가 Tool 계층까지 정상적으로 전파되는지 검증 (크래시 없이 응답)."""
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+    res = get_shopping_trends.invoke({
+        "keywords": "노트북",
+        "start_date": "2026-01-01",
+        "end_date": "2026-02-01",
+    })
+    assert "[Fallback Mock]" in res
 
 
 def test_naver_shopping_registry_discovery():

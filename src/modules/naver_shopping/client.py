@@ -4,9 +4,14 @@
 # ➔ 다음 단계: 🟠 [Step 2] guardrails.py 로 이동하여 0원 상품 필터링 등 가드레일을 작성하세요.
 # ==============================================================================
 
-import requests
+import logging
 from typing import Any, Dict, List, Optional
+
+import requests
+
 from src.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class NaverShoppingClient:
@@ -36,6 +41,22 @@ class NaverShoppingClient:
     def headers(self, value: Dict[str, str]):
         self._headers = value
 
+    def _get_fallback_trend_data(self, label: str) -> Dict[str, Any]:
+        """OpenAPI 실패 시 반환할 표준 스키마의 폴백 목 데이터 (handoff/04_testing_harness.md 3.3)."""
+        return {
+            "results": [
+                {
+                    "title": f"[Fallback Mock] {label}",
+                    "data": [
+                        {
+                            "period": "1970-01-01",
+                            "ratio": 0,
+                        }
+                    ],
+                }
+            ]
+        }
+
     def get_datalab_trend(self, keywords: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
         body = {
             "startDate": start_date,
@@ -43,15 +64,24 @@ class NaverShoppingClient:
             "timeUnit": "month",
             "keywordGroups": [{"groupName": kw, "keywords": [kw]} for kw in keywords],
         }
-        resp = requests.post(self.DATALAB_URL, headers=self.headers, json=body, timeout=5)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = requests.post(self.DATALAB_URL, headers=self.headers, json=body, timeout=5)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("네이버 검색어 트렌드 OpenAPI 호출 실패, 폴백 목 데이터를 반환합니다: %s", e)
+            label = ", ".join(keywords) if keywords else "키워드"
+            return self._get_fallback_trend_data(f"{label} 관련 오프라인 검색 추이 데이터")
 
-    def _post_shopping_insight(self, path: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    def _post_shopping_insight(self, path: str, body: Dict[str, Any], fallback_label: str) -> Dict[str, Any]:
         url = f"{self.SHOPPING_INSIGHT_BASE_URL}/{path}"
-        resp = requests.post(url, headers=self.headers, json=body, timeout=5)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = requests.post(url, headers=self.headers, json=body, timeout=5)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("네이버 쇼핑 인사이트(%s) OpenAPI 호출 실패, 폴백 목 데이터를 반환합니다: %s", path, e)
+            return self._get_fallback_trend_data(f"{fallback_label} 관련 오프라인 쇼핑 인사이트 데이터")
 
     @staticmethod
     def _with_optional(body: Dict[str, Any], device: Optional[str], gender: Optional[str], ages: Optional[List[str]]) -> Dict[str, Any]:
@@ -80,7 +110,8 @@ class NaverShoppingClient:
             "timeUnit": time_unit,
             "category": [{"name": name, "param": [code]} for name, code in list(categories.items())[:3]],
         }
-        return self._post_shopping_insight("categories", self._with_optional(body, device, gender, ages))
+        label = ", ".join(categories.keys()) if categories else "분야"
+        return self._post_shopping_insight("categories", self._with_optional(body, device, gender, ages), label)
 
     def get_category_gender_trend(
         self,
@@ -93,7 +124,9 @@ class NaverShoppingClient:
     ) -> Dict[str, Any]:
         """POST /shopping/v1/category/gender - 특정 분야의 성별 클릭 트렌드"""
         body = {"startDate": start_date, "endDate": end_date, "timeUnit": time_unit, "category": category_code}
-        return self._post_shopping_insight("category/gender", self._with_optional(body, device, None, ages))
+        return self._post_shopping_insight(
+            "category/gender", self._with_optional(body, device, None, ages), category_code
+        )
 
     def get_category_age_trend(
         self,
@@ -106,7 +139,9 @@ class NaverShoppingClient:
     ) -> Dict[str, Any]:
         """POST /shopping/v1/category/age - 특정 분야의 연령별 클릭 트렌드"""
         body = {"startDate": start_date, "endDate": end_date, "timeUnit": time_unit, "category": category_code}
-        return self._post_shopping_insight("category/age", self._with_optional(body, device, gender, None))
+        return self._post_shopping_insight(
+            "category/age", self._with_optional(body, device, gender, None), category_code
+        )
 
     def get_category_keyword_trend(
         self,
@@ -127,7 +162,10 @@ class NaverShoppingClient:
             "category": category_code,
             "keyword": [{"name": name, "param": [term]} for name, term in list(keywords.items())[:5]],
         }
-        return self._post_shopping_insight("category/keywords", self._with_optional(body, device, gender, ages))
+        label = f"{category_code}: {', '.join(keywords.keys())}" if keywords else category_code
+        return self._post_shopping_insight(
+            "category/keywords", self._with_optional(body, device, gender, ages), label
+        )
 
     def get_keyword_gender_trend(
         self,
@@ -147,7 +185,9 @@ class NaverShoppingClient:
             "category": category_code,
             "keyword": keyword,
         }
-        return self._post_shopping_insight("category/keyword/gender", self._with_optional(body, device, None, ages))
+        return self._post_shopping_insight(
+            "category/keyword/gender", self._with_optional(body, device, None, ages), keyword
+        )
 
     def get_keyword_age_trend(
         self,
@@ -167,4 +207,6 @@ class NaverShoppingClient:
             "category": category_code,
             "keyword": keyword,
         }
-        return self._post_shopping_insight("category/keyword/age", self._with_optional(body, device, gender, None))
+        return self._post_shopping_insight(
+            "category/keyword/age", self._with_optional(body, device, gender, None), keyword
+        )

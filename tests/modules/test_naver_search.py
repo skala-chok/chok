@@ -6,6 +6,7 @@
 # ==============================================================================
 
 import pytest
+import requests
 from unittest.mock import patch, MagicMock
 from src.modules.naver_search.module import NaverSearchModule
 from src.modules.naver_search.tools import search_naver_blog, search_naver_news
@@ -243,6 +244,40 @@ def test_client_search_news_params(mock_get, monkeypatch):
         timeout=5,
     )
     assert res == {"items": []}
+
+
+@patch("src.modules.naver_search.client.requests.get")
+def test_client_search_blog_openapi_failure_fallback(mock_get):
+    """handoff/04_testing_harness.md 3.3 - OpenAPI 통신 장애 시 client가 폴백 목 데이터를 반환하는지 검증."""
+    mock_get.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+    client = NaverSearchClient()
+    result = client.search_blog("AI 트렌드")
+
+    assert "items" in result
+    assert len(result["items"]) >= 1
+    assert "[Fallback Mock]" in result["items"][0]["title"]
+
+
+@patch("src.modules.naver_search.client.requests.get")
+def test_client_search_news_openapi_failure_fallback(mock_get):
+    """handoff/04_testing_harness.md 3.3 - OpenAPI 통신 장애 시 client가 폴백 목 데이터를 반환하는지 검증."""
+    mock_get.side_effect = requests.exceptions.Timeout("Read timed out")
+
+    client = NaverSearchClient()
+    result = client.search_news("AI 트렌드")
+
+    assert "items" in result
+    assert len(result["items"]) >= 1
+    assert "[Fallback Mock]" in result["items"][0]["title"]
+
+
+@patch("src.modules.naver_search.client.requests.get")
+def test_search_naver_blog_openapi_failure_fallback_via_tool(mock_get):
+    """폴백 목 데이터가 Tool 계층까지 정상적으로 전파되는지 검증 (크래시 없이 응답)."""
+    mock_get.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+    res = search_naver_blog.invoke({"query": "AI 트렌드", "display": 1})
+    assert "[Fallback Mock]" in res
 
 
 def test_naver_search_registry_discovery():
