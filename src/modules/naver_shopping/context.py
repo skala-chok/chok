@@ -10,7 +10,7 @@ from src.core.base import BaseContextProvider
 class NaverShoppingContextProvider(BaseContextProvider):
     def get_system_prompt_snippet(self) -> str:
         return (
-            "- 상품이나 키워드의 통합검색 검색 관심도 및 시기별 추세를 비교할 때는 'get_shopping_trends'를 사용하십시오.\n"
+            "- 상품이나 키워드의 통합검색 검색 관심도 및 시기별 추세를 비교할 때는 'get_shopping_trends'를 사용하십시오 (키워드 최대 5개, 2016-01-01 이후 데이터만 조회 가능).\n"
             "- 네이버쇼핑 분야(카테고리)별 클릭 트렌드를 최대 3개까지 비교할 때는 'get_shopping_category_trend'를 사용하십시오.\n"
             "- 특정 분야의 성별/연령대별 클릭 트렌드가 필요하면 각각 'get_shopping_category_gender_trend', 'get_shopping_category_age_trend'를 사용하십시오.\n"
             "- 특정 분야 내 검색 키워드별(최대 5개) 클릭 트렌드 비교는 'get_shopping_keyword_trend'를 사용하십시오.\n"
