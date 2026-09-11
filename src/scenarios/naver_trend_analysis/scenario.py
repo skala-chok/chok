@@ -1,0 +1,279 @@
+import re
+from datetime import date, timedelta
+from typing import Any, Dict, List, Optional, Tuple, Type
+
+from langchain_core.tools import BaseTool
+from pydantic import BaseModel, Field
+
+from src.core.scenario import BaseScenario
+
+_TITLE_RE = re.compile(r"^\[(.+?)\]$")
+_POINT_RE = re.compile(r"^\s*-\s*([\d-]+)(?:\s*\(([^)]+)\))?:\s*([\d.]+)\s*$")
+
+
+def _run(tools: Dict[str, BaseTool], name: str, **kwargs: Any) -> str:
+    tool = tools.get(name)
+    return tool.invoke(kwargs) if tool else f"{name} 도구를 사용할 수 없습니다."
+
+
+def _parse_series(text: str) -> Dict[str, List[Tuple[str, Optional[str], float]]]:
+    """get_shopping_*_trend 계열 Tool이 반환하는 텍스트를 {title: [(period, group, ratio), ...]}로 역파싱한다."""
+    series: Dict[str, List[Tuple[str, Optional[str], float]]] = {}
+    current_title: Optional[str] = None
+    for line in text.splitlines():
+        title_match = _TITLE_RE.match(line.strip())
+        if title_match:
+            current_title = title_match.group(1)
+            series[current_title] = []
+            continue
+        point_match = _POINT_RE.match(line)
+        if point_match and current_title is not None:
+            period, group, ratio = point_match.groups()
+            series[current_title].append((period, group, float(ratio)))
+    return series
+
+
+def _trend_direction(points: List[Tuple[str, Optional[str], float]]) -> str:
+    """구간 시작 대비 종료 시점의 ratio 변화로 추세를 판정한다 (±5 이내는 보합)."""
+    if len(points) < 2:
+        return "판단 불가 (구간 내 데이터 부족)"
+    first_ratio = points[0][2]
+    last_ratio = points[-1][2]
+    diff = last_ratio - first_ratio
+    if diff > 5:
+        return f"상승 ({first_ratio} → {last_ratio})"
+    if diff < -5:
+        return f"하락 ({first_ratio} → {last_ratio})"
+    return f"보합 ({first_ratio} → {last_ratio})"
+
+
+def _top_segment(points: List[Tuple[str, Optional[str], float]]) -> Optional[Tuple[str, float]]:
+    """group별(성별/연령대) 최댓값을 비교해 가장 관심도가 높은 세그먼트를 찾는다."""
+    grouped: Dict[str, float] = {}
+    for _period, group, ratio in points:
+        if group is None:
+            continue
+        grouped[group] = max(grouped.get(group, 0.0), ratio)
+    if not grouped:
+        return None
+    top_group = max(grouped, key=grouped.get)
+    return top_group, grouped[top_group]
+
+
+def _default_start() -> str:
+    return str(date.today() - timedelta(days=90))
+
+
+def _default_end() -> str:
+    return str(date.today())
+
+
+class NewProductKeywordTrendParams(BaseModel):
+    category_name: str = Field(description="네이버쇼핑 분야명 (예: '스킨/토너')")
+    category_code: str = Field(description="네이버쇼핑 분야 코드 (예: '50000167')")
+    keywords: str = Field(description="비교할 세부 키워드, 쉼표로 구분 (예: '수분스킨,저자극스킨,맨즈스킨'), 최대 5개")
+    start_date: str = Field(default_factory=_default_start, description="분석 시작일, YYYY-MM-DD (기본: 최근 3개월)")
+    end_date: str = Field(default_factory=_default_end, description="분석 종료일, YYYY-MM-DD")
+
+
+class NewProductKeywordTrendScenario(BaseScenario):
+    """신제품 마케팅 준비를 위해 분야 전체 트렌드와 세부 키워드 관심도를 함께 조사한다."""
+
+    @property
+    def name(self) -> str:
+        return "naver_new_product_keyword_trend"
+
+    @property
+    def description(self) -> str:
+        return "신제품 마케팅을 준비할 때 네이버쇼핑 분야 트렌드와 통합검색·쇼핑 영역 기준 세부 키워드 관심도를 함께 조사한다."
+
+    @property
+    def parameters_schema(self) -> Type[BaseModel]:
+        return NewProductKeywordTrendParams
+
+    @property
+    def required_tool_names(self) -> List[str]:
+        return ["get_shopping_category_trend", "get_shopping_trends", "get_shopping_keyword_trend"]
+
+    def execute(
+        self,
+        params: NewProductKeywordTrendParams,
+        tools: Dict[str, BaseTool],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        category_arg = f"{params.category_name}:{params.category_code}"
+        category_result = _run(
+            tools, "get_shopping_category_trend",
+            categories=category_arg, start_date=params.start_date, end_date=params.end_date,
+        )
+
+        overall_result = _run(
+            tools, "get_shopping_trends",
+            keywords=params.keywords, start_date=params.start_date, end_date=params.end_date,
+        )
+
+        kw_list = [k.strip() for k in params.keywords.split(",") if k.strip()]
+        kw_pairs = ",".join(f"{kw}:{kw}" for kw in kw_list)
+        keyword_result = _run(
+            tools, "get_shopping_keyword_trend",
+            category_code=params.category_code, keywords=kw_pairs,
+            start_date=params.start_date, end_date=params.end_date,
+        )
+
+        keyword_series = _parse_series(keyword_result)
+        direction_lines = [f"- {title}: {_trend_direction(points)}" for title, points in keyword_series.items()]
+        direction_summary = "\n".join(direction_lines) if direction_lines else "- 판단 불가 (데이터 없음)"
+
+        return (
+            f"### [{params.category_name}] 신제품 키워드 트렌드 조사\n"
+            f"기간: {params.start_date} ~ {params.end_date}\n\n"
+            f"#### 1. 분야 전체 트렌드 (쇼핑 영역)\n{category_result}\n\n"
+            f"#### 2. 통합검색 기준 키워드 전체 관심도\n{overall_result}\n\n"
+            f"#### 3. 쇼핑 영역 기준 세부 키워드 비교\n{keyword_result}\n\n"
+            f"#### 4. 추세 판정 (구간 시작 대비 종료 시점, ±5 이내는 보합)\n{direction_summary}\n\n"
+            "ratio는 조회 구간 내 최댓값을 100으로 정규화한 상대값이며, 절대 검색량이 아닙니다. "
+            "통합검색 기준과 쇼핑 영역 기준은 서로 다른 모수이므로 직접 비교하지 마십시오."
+        )
+
+
+class TargetAudienceValidationParams(BaseModel):
+    category_name: str = Field(description="네이버쇼핑 분야명 (예: '스킨/토너')")
+    category_code: str = Field(description="네이버쇼핑 분야 코드")
+    keyword: str = Field(description="검증할 대표 키워드 (예: '수분스킨')")
+    target_gender: str = Field(description="설정한 타겟 성별. 'm'(남성) 또는 'f'(여성)")
+    target_age: str = Field(description="설정한 타겟 연령대. '10'~'60' 중 하나")
+    start_date: str = Field(default_factory=_default_start, description="분석 시작일, YYYY-MM-DD (기본: 최근 3개월)")
+    end_date: str = Field(default_factory=_default_end, description="분석 종료일, YYYY-MM-DD")
+
+
+class TargetAudienceValidationScenario(BaseScenario):
+    """설정한 타겟 오디언스(성별·연령)가 실제 검색 관심도 데이터와 맞는지 검증한다."""
+
+    @property
+    def name(self) -> str:
+        return "naver_target_audience_validation"
+
+    @property
+    def description(self) -> str:
+        return "특정 상품/키워드에 설정한 타겟 오디언스(성별·연령)가 실제 네이버쇼핑 검색·구매 관심도와 맞는지 검증한다."
+
+    @property
+    def parameters_schema(self) -> Type[BaseModel]:
+        return TargetAudienceValidationParams
+
+    @property
+    def required_tool_names(self) -> List[str]:
+        return [
+            "get_shopping_category_gender_trend",
+            "get_shopping_category_age_trend",
+            "get_shopping_keyword_gender_trend",
+            "get_shopping_keyword_age_trend",
+        ]
+
+    def execute(
+        self,
+        params: TargetAudienceValidationParams,
+        tools: Dict[str, BaseTool],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
+
+        category_gender = _run(tools, "get_shopping_category_gender_trend", category_code=params.category_code, **date_kwargs)
+        category_age = _run(tools, "get_shopping_category_age_trend", category_code=params.category_code, **date_kwargs)
+        keyword_gender = _run(tools, "get_shopping_keyword_gender_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
+        keyword_age = _run(tools, "get_shopping_keyword_age_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
+
+        checks = []
+        for label, raw_text, target in (
+            ("분야 전체 - 성별", category_gender, params.target_gender),
+            ("분야 전체 - 연령", category_age, params.target_age),
+            (f"'{params.keyword}' 키워드 - 성별", keyword_gender, params.target_gender),
+            (f"'{params.keyword}' 키워드 - 연령", keyword_age, params.target_age),
+        ):
+            series = _parse_series(raw_text)
+            top = None
+            for points in series.values():
+                candidate = _top_segment(points)
+                if candidate and (top is None or candidate[1] > top[1]):
+                    top = candidate
+            if top is None:
+                checks.append(f"- {label}: 판단 불가 (데이터 없음)")
+            elif top[0] == target:
+                checks.append(f"- {label}: ✅ 실제 최고 관심 세그먼트 '{top[0]}'(ratio {top[1]})가 타겟과 일치")
+            else:
+                checks.append(f"- {label}: ⚠️ 실제 최고 관심 세그먼트는 '{top[0]}'(ratio {top[1]})이나, 설정한 타겟은 '{target}'이라 불일치")
+
+        return (
+            f"### [{params.category_name} / {params.keyword}] 타겟 오디언스 검증\n"
+            f"설정한 타겟: 성별={params.target_gender}, 연령대={params.target_age}\n"
+            f"기간: {params.start_date} ~ {params.end_date}\n\n"
+            f"#### 1. 분야 전체 성별 트렌드\n{category_gender}\n\n"
+            f"#### 2. 분야 전체 연령별 트렌드\n{category_age}\n\n"
+            f"#### 3. '{params.keyword}' 키워드 성별 트렌드\n{keyword_gender}\n\n"
+            f"#### 4. '{params.keyword}' 키워드 연령별 트렌드\n{keyword_age}\n\n"
+            f"#### 5. 타겟 일치 여부 검증\n" + "\n".join(checks) + "\n\n"
+            "ages는 10세 단위(10~60)로만 제공되며, ratio는 구간 내 상대값이라 특정 구간의 일시적 변동만으로 "
+            "타겟이 틀렸다고 단정할 수 없습니다."
+        )
+
+
+class KeywordAudienceSegmentationParams(BaseModel):
+    category_code: str = Field(description="네이버쇼핑 분야 코드")
+    keyword: str = Field(description="분포를 확인할 검색 키워드")
+    start_date: str = Field(default_factory=_default_start, description="분석 시작일, YYYY-MM-DD (기본: 최근 3개월)")
+    end_date: str = Field(default_factory=_default_end, description="분석 종료일, YYYY-MM-DD")
+
+
+class KeywordAudienceSegmentationScenario(BaseScenario):
+    """특정 키워드를 실제로 검색하는 사람들의 성별·연령대 분포를 세분화하여 제공한다."""
+
+    @property
+    def name(self) -> str:
+        return "naver_keyword_audience_segmentation"
+
+    @property
+    def description(self) -> str:
+        return "광고 타겟팅을 위해 특정 검색 키워드의 성별·연령대별 관심도 분포를 세분화하여 보여준다."
+
+    @property
+    def parameters_schema(self) -> Type[BaseModel]:
+        return KeywordAudienceSegmentationParams
+
+    @property
+    def required_tool_names(self) -> List[str]:
+        return ["get_shopping_keyword_gender_trend", "get_shopping_keyword_age_trend"]
+
+    def execute(
+        self,
+        params: KeywordAudienceSegmentationParams,
+        tools: Dict[str, BaseTool],
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
+        gender_result = _run(tools, "get_shopping_keyword_gender_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
+        age_result = _run(tools, "get_shopping_keyword_age_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
+
+        gender_top = None
+        for points in _parse_series(gender_result).values():
+            candidate = _top_segment(points)
+            if candidate and (gender_top is None or candidate[1] > gender_top[1]):
+                gender_top = candidate
+
+        age_top = None
+        for points in _parse_series(age_result).values():
+            candidate = _top_segment(points)
+            if candidate and (age_top is None or candidate[1] > age_top[1]):
+                age_top = candidate
+
+        gender_line = f"- 가장 관심도 높은 성별: {gender_top[0]} (ratio {gender_top[1]})" if gender_top else "- 판단 불가 (데이터 없음)"
+        age_line = f"- 가장 관심도 높은 연령대: {age_top[0]}대 (ratio {age_top[1]})" if age_top else "- 판단 불가 (데이터 없음)"
+
+        return (
+            f"### '{params.keyword}' 키워드 타겟팅 세분화\n"
+            f"기간: {params.start_date} ~ {params.end_date}\n\n"
+            f"#### 1. 성별 분포\n{gender_result}\n\n"
+            f"#### 2. 연령대별 분포\n{age_result}\n\n"
+            f"#### 3. 요약\n{gender_line}\n{age_line}\n\n"
+            "ratio는 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량·구매자 수가 아닙니다. "
+            "특정 세그먼트가 높다고 해서 다른 세그먼트를 광고 타겟에서 배제해야 한다는 뜻은 아닙니다."
+        )
