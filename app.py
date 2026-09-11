@@ -695,7 +695,7 @@ with tab_scenario:
                     progress_bar.progress(100, text=f"완료! (소요 시간: {elapsed_scen:.2f}초)")
 
                     st.markdown("### 📊 최종 시나리오 분석 리포트")
-                    st.markdown(final_report)
+                    st.markdown(get_human_report(final_report))
 
                 except Exception as e_scen:
                     progress_bar.empty()
