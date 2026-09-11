@@ -10,10 +10,42 @@ import re
 from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel, Field, field_validator
 from langchain_core.tools import BaseTool
-from langchain_core.prompts import ChatPromptTemplate
 from src.core.scenario import BaseScenario
 
 logger = logging.getLogger(__name__)
+
+
+def _coerce_list(v: Any, default: List[str]) -> List[str]:
+    if not v or v == "PydanticUndefined":
+        return default
+    if isinstance(v, str):
+        v = v.strip()
+        if not v or v == "PydanticUndefined":
+            return default
+        if v.startswith("[") and v.endswith("]"):
+            try:
+                loaded = json.loads(v)
+                if isinstance(loaded, list):
+                    return [str(x).strip() for x in loaded if str(x).strip()]
+            except Exception:
+                pass
+        return [tag.strip() for tag in v.split(",") if tag.strip()]
+    if isinstance(v, (list, tuple)):
+        return [str(tag).strip() for tag in v if str(tag).strip()]
+    return default
+
+
+def _coerce_hours(v: Any) -> int:
+    if v is None or v == "" or v == "PydanticUndefined":
+        return 24
+    if isinstance(v, str):
+        digits = re.findall(r"\d+", v)
+        return int(digits[0]) if digits else 24
+    try:
+        val = int(v)
+        return val if val > 0 else 24
+    except Exception:
+        return 24
 
 
 # ------------------------------------------------------------------------------
@@ -38,40 +70,12 @@ class HashtagSurgeDetectionParams(BaseModel):
     @field_validator("hours_range", mode="before")
     @classmethod
     def parse_hours_range(cls, v: Any) -> int:
-        if v is None or v == "" or v == "PydanticUndefined":
-            return 24
-        if isinstance(v, str):
-            digits = re.findall(r"\d+", v)
-            if digits:
-                return int(digits[0])
-            return 24
-        try:
-            val = int(v)
-            return val if val > 0 else 24
-        except Exception:
-            return 24
+        return _coerce_hours(v)
 
     @field_validator("compare_hashtags", mode="before")
     @classmethod
     def parse_compare_hashtags(cls, v: Any) -> List[str]:
-        default_list = ["#성남 맛집", "#분당 맛집", "#판교 맛집"]
-        if v is None:
-            return default_list
-        if isinstance(v, str):
-            v_clean = v.strip()
-            if not v_clean or v_clean == "PydanticUndefined":
-                return default_list
-            if v_clean.startswith("[") and v_clean.endswith("]"):
-                try:
-                    loaded = json.loads(v_clean)
-                    if isinstance(loaded, list):
-                        return [str(x).strip() for x in loaded if str(x).strip()]
-                except Exception:
-                    pass
-            return [tag.strip() for tag in v_clean.split(",") if tag.strip()]
-        if isinstance(v, (list, tuple)):
-            return [str(tag).strip() for tag in v if str(tag).strip()]
-        return v
+        return _coerce_list(v, ["#성남 맛집", "#분당 맛집", "#판교 맛집"])
 
 
 class HashtagItemMetric(BaseModel):
@@ -157,9 +161,6 @@ class HashtagSurgeDetectionScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        context = context or {}
-        llm = context.get("llm")
-
         search_tool = tools.get("search_hashtag_id")
         recent_tool = tools.get("get_hashtag_recent_media")
         top_tool = tools.get("get_hashtag_top_media")
@@ -188,7 +189,6 @@ class HashtagSurgeDetectionScenario(BaseScenario):
 
         normalization_mappings: Dict[str, str] = {}
         metrics_list: List[HashtagItemMetric] = []
-        detailed_tool_logs: List[str] = []
 
         for raw_tag in tags_to_compare:
             norm_query = self._normalize_tag(raw_tag)
@@ -200,10 +200,8 @@ class HashtagSurgeDetectionScenario(BaseScenario):
                 try:
                     search_res = search_tool.invoke({"query": norm_query})
                     ht_id = self._parse_id_from_tool_result(str(search_res))
-                    detailed_tool_logs.append(f"[{raw_tag} ID 조회]:\n{search_res}")
                 except Exception as e:
                     logger.warning("해시태그 ID 조회 실패 (%s): %s", norm_query, e)
-                    detailed_tool_logs.append(f"[{raw_tag} ID 조회 실패]: {e}")
 
             if not ht_id:
                 ht_id = f"fallback_ht_{norm_query}"
@@ -211,38 +209,28 @@ class HashtagSurgeDetectionScenario(BaseScenario):
             # Step 2: 최신글 조회 (recent_media = 현재 시간대 온도)
             recent_count = 0
             recent_avg = 0.0
-            recent_raw = ""
             if recent_tool:
                 try:
                     recent_res = recent_tool.invoke({"hashtag_id": ht_id, "hours_range": effective_hours})
-                    recent_raw = str(recent_res)
-                    r_stats = self._extract_media_metrics(recent_raw)
-                    recent_count = r_stats["count"]
-                    recent_avg = r_stats["avg_engagement"]
-                    detailed_tool_logs.append(f"[{raw_tag} 최신글(recent_media, {capped_hours}h)]:\n{recent_res}")
                 except Exception:
                     try:
                         recent_res = recent_tool.invoke({"hashtag_id": ht_id})
-                        recent_raw = str(recent_res)
-                        r_stats = self._extract_media_metrics(recent_raw)
-                        recent_count = r_stats["count"]
-                        recent_avg = r_stats["avg_engagement"]
-                        detailed_tool_logs.append(f"[{raw_tag} 최신글(recent_media)]:\n{recent_res}")
                     except Exception as e2:
                         logger.warning("최신글 조회 실패 (%s): %s", ht_id, e2)
+                        recent_res = ""
+                r_stats = self._extract_media_metrics(str(recent_res))
+                recent_count = r_stats["count"]
+                recent_avg = r_stats["avg_engagement"]
 
             # Step 3: 누적 인기글 조회 (top_media = 비교 기준선 baseline)
             top_count = 0
             top_avg = 0.0
-            top_raw = ""
             if top_tool:
                 try:
                     top_res = top_tool.invoke({"hashtag_id": ht_id})
-                    top_raw = str(top_res)
-                    t_stats = self._extract_media_metrics(top_raw)
+                    t_stats = self._extract_media_metrics(str(top_res))
                     top_count = t_stats["count"]
                     top_avg = t_stats["avg_engagement"]
-                    detailed_tool_logs.append(f"[{raw_tag} 인기글(top_media)]:\n{top_res}")
                 except Exception as e:
                     logger.warning("인기글 조회 실패 (%s): %s", ht_id, e)
 

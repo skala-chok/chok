@@ -49,6 +49,26 @@ def search_hashtag_id(query: str) -> str:
         return f"{normalization_notice}\n해시태그 ID 검색 실패: {str(e)}"
 
 
+def _format_media_list(items: list) -> tuple[list[str], int, int]:
+    lines = []
+    total_likes = 0
+    total_comments = 0
+    for idx, it in enumerate(items, 1):
+        likes = it.get("like_count", 0)
+        comments = it.get("comments_count", 0)
+        total_likes += likes
+        total_comments += comments
+        caption = it.get("caption", "내용 없음").replace("\n", " ")
+        short_caption = caption[:70] + "..." if len(caption) > 70 else caption
+        lines.append(
+            f"  {idx}. [ID: {it.get('id')}] 좋아요: {likes:,}개 | 댓글: {comments:,}개 | 타입: {it.get('media_type')}\n"
+            f"     - 캡션: \"{short_caption}\"\n"
+            f"     - 링크: {it.get('permalink')}\n"
+            f"     - 시간: {it.get('timestamp')}"
+        )
+    return lines, total_likes, total_comments
+
+
 @tool
 def get_hashtag_recent_media(hashtag_id: str, hours_range: int = 24) -> str:
     """지정된 해시태그 ID의 '최근 유입 게시물(recent_media, 현재 시간대 온도)' 목록을 조회합니다.
@@ -86,8 +106,7 @@ def get_hashtag_recent_media(hashtag_id: str, hours_range: int = 24) -> str:
                 dt = None
                 if ts_str:
                     try:
-                        cleaned_ts = ts_str.replace("Z", "+00:00")
-                        dt = datetime.fromisoformat(cleaned_ts)
+                        dt = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
                         if dt.tzinfo is None:
                             dt = dt.replace(tzinfo=timezone.utc)
                     except Exception:
@@ -96,31 +115,16 @@ def get_hashtag_recent_media(hashtag_id: str, hours_range: int = 24) -> str:
 
             valid_dts = [entry[0] for entry in parsed_entries if entry[0] is not None]
             if valid_dts:
-                ref_time = max(valid_dts)
-                cutoff = ref_time - timedelta(hours=capped_hours)
+                cutoff = max(valid_dts) - timedelta(hours=capped_hours)
                 filtered_items = [entry[1] for entry in parsed_entries if entry[0] is not None and entry[0] >= cutoff]
 
+        media_lines, total_likes, total_comments = _format_media_list(filtered_items)
         lines = [
             f"### [최신글 (recent_media)] 해시태그 ID: {hashtag_id}",
             f"• 수집 건수: {len(filtered_items)}건 (최근 {capped_hours}시간 윈도우 한정)",
             "• 게시물 목록:",
+            *media_lines,
         ]
-
-        total_likes = 0
-        total_comments = 0
-        for idx, it in enumerate(filtered_items, 1):
-            likes = it.get("like_count", 0)
-            comments = it.get("comments_count", 0)
-            total_likes += likes
-            total_comments += comments
-            caption = it.get("caption", "내용 없음").replace("\n", " ")
-            short_caption = caption[:70] + "..." if len(caption) > 70 else caption
-            lines.append(
-                f"  {idx}. [ID: {it.get('id')}] 좋아요: {likes:,}개 | 댓글: {comments:,}개 | 타입: {it.get('media_type')}\n"
-                f"     - 캡션: \"{short_caption}\"\n"
-                f"     - 링크: {it.get('permalink')}\n"
-                f"     - 시간: {it.get('timestamp')}"
-            )
 
         avg_eng = (total_likes + total_comments) / len(filtered_items) if filtered_items else 0.0
         lines.append(f"\n• 최근 {capped_hours}시간 평균 참여도 (좋아요+댓글): {avg_eng:.2f}")
@@ -153,27 +157,13 @@ def get_hashtag_top_media(hashtag_id: str) -> str:
         if not items:
             return f"해시태그 ID({hashtag_id})의 인기 게시물 결과가 없습니다."
 
+        media_lines, total_likes, total_comments = _format_media_list(items)
         lines = [
             f"### [누적 인기글 (top_media - 비교 기준선)] 해시태그 ID: {hashtag_id}",
             f"• 수집 건수: {len(items)}건",
             "• 기준선 게시물 목록:",
+            *media_lines,
         ]
-
-        total_likes = 0
-        total_comments = 0
-        for idx, it in enumerate(items, 1):
-            likes = it.get("like_count", 0)
-            comments = it.get("comments_count", 0)
-            total_likes += likes
-            total_comments += comments
-            caption = it.get("caption", "내용 없음").replace("\n", " ")
-            short_caption = caption[:70] + "..." if len(caption) > 70 else caption
-            lines.append(
-                f"  {idx}. [ID: {it.get('id')}] 좋아요: {likes:,}개 | 댓글: {comments:,}개 | 타입: {it.get('media_type')}\n"
-                f"     - 캡션: \"{short_caption}\"\n"
-                f"     - 링크: {it.get('permalink')}\n"
-                f"     - 시간: {it.get('timestamp')}"
-            )
 
         avg_eng = (total_likes + total_comments) / len(items)
         lines.append(f"\n• 누적 인기글 평균 참여도 기준선 (좋아요+댓글): {avg_eng:.2f}")
