@@ -430,3 +430,84 @@ def test_agent_end_to_end_cross_platform_trend_scenario_routing(monkeypatch):
         assert "2. 유튜브 관련 영상" in response
         assert "3. 인스타그램 해시태그 반응" in response
 
+
+def test_agent_end_to_end_hashtag_surge_detection_scenario_routing(monkeypatch):
+    """hashtag_surge_detection 시나리오 라우팅 시 hours_range 적용 및 리포트 생성을 검증."""
+    monkeypatch.setattr(settings, "INSTAGRAM_ACCESS_TOKEN", "mock_ig_token")
+    monkeypatch.setattr(settings, "INSTAGRAM_USER_ID", "mock_ig_user")
+
+    mod_registry = ModuleRegistry()
+    mod_registry.discover_modules("src.modules")
+
+    scen_registry = ScenarioRegistry()
+    scen_registry.discover_scenarios("src.scenarios")
+
+    mock_router = MagicMock()
+    mock_router.route.return_value = ScenarioExecutionPlan(
+        scenario_name="hashtag_surge_detection",
+        confidence=0.98,
+        parameters={
+            "base_keyword": "성남맛집",
+            "compare_hashtags": ["#성남맛집", "#판교맛집"],
+            "hours_range": 12,
+        },
+        reasoning="인스타그램 급상승 해시태그 분석",
+    )
+
+    runner = AgentRunner(
+        registry=mod_registry,
+        scenario_registry=scen_registry,
+        router=mock_router,
+        llm=MagicMock(),
+    )
+
+    with patch("src.modules.instagram.client.requests.get") as mock_ig_get:
+        def fake_ig_get(url, params=None, **kwargs):
+            res = MagicMock()
+            res.status_code = 200
+            if "ig_hashtag_search" in url:
+                res.json.return_value = {"data": [{"id": "17841400000000001", "name": "성남맛집"}]}
+            elif "recent_media" in url:
+                res.json.return_value = {
+                    "data": [
+                        {
+                            "id": f"rec_{i}",
+                            "like_count": 50,
+                            "comments_count": 10,
+                            "timestamp": "2026-09-11T12:00:00+0000",
+                            "caption": "#성남맛집 핫플 탐방",
+                            "permalink": f"https://instagram.com/p/{i}",
+                            "media_type": "IMAGE",
+                        }
+                        for i in range(6)
+                    ]
+                }
+            elif "top_media" in url:
+                res.json.return_value = {
+                    "data": [
+                        {
+                            "id": f"top_{i}",
+                            "like_count": 30,
+                            "comments_count": 5,
+                            "timestamp": "2026-08-01T12:00:00+0000",
+                            "caption": "#성남맛집 인기글",
+                            "permalink": f"https://instagram.com/p/top_{i}",
+                            "media_type": "IMAGE",
+                        }
+                        for i in range(5)
+                    ]
+                }
+            else:
+                res.json.return_value = {"data": []}
+            return res
+
+        mock_ig_get.side_effect = fake_ig_get
+
+        response = runner.run("성남맛집 인스타그램 최근 12시간 급상승 분석해줘")
+
+        assert "급상승 해시태그" in response
+        assert "분석 시간 범위**: 최근 **12시간" in response
+        assert "최신글 수(12h)" in response
+        assert "성남맛집" in response
+
+

@@ -292,13 +292,25 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> Any:
         )
     elif "get_hashtag_recent_media" in tool_name:
         hid = args.get("hashtag_id", "ht_mock")
+        raw_hours = args.get("hours_range", 24)
+        try:
+            hours = int(raw_hours) if int(raw_hours) > 0 else 24
+        except Exception:
+            hours = 24
+        capped_hours = min(hours, 24)
+        hours_notice = ""
+        if hours > 24:
+            hours_notice = (
+                f"\n⚠️ [시간 범위 고지] Instagram Graph API는 최근 최대 24시간 이내 게시물만 제공하므로, "
+                f"요청하신 {hours}시간 대신 최대 한도인 24시간으로 자동 캡(Cap)이 적용되었습니다."
+            )
         return (
             f"### [최신글 (recent_media)] 해시태그 ID: {hid}\n"
-            f"• 수집 건수: 5건 (최근 24시간 윈도우 한정)\n"
-            f"• 최근 24시간 평균 참여도 (좋아요+댓글): 48.5\n"
+            f"• 수집 건수: 5건 (최근 {capped_hours}시간 윈도우 한정)\n"
+            f"• 최근 {capped_hours}시간 평균 참여도 (좋아요+댓글): 48.5\n"
             f"1. [ID: m_rec_1] 좋아요: 35개 | 댓글: 8개 | 시간: 2026-09-11T08:00:00+0000\n"
             f"   - 캡션: \"[Mock] 실시간 성남 맛집 핫플 방문! #성남맛집\"\n"
-            f"※ 안내: recent_media는 최근 24시간 게시물만 반환하며 시계열 추이를 제공하지 않습니다."
+            f"※ 안내: recent_media는 최근 24시간 게시물만 반환하며 기간별 시계열 추이를 제공하지 않습니다.{hours_notice}"
         )
     elif "get_hashtag_top_media" in tool_name:
         hid = args.get("hashtag_id", "ht_mock")
@@ -501,9 +513,10 @@ with tab_tool:
                         help=arg_desc,
                     )
                 elif arg_type == "integer":
+                    default_int = int(arg_default) if arg_default is not None else (24 if "hour" in arg_name.lower() else 5)
                     param_inputs[arg_name] = st.number_input(
                         f"`{arg_name}` (숫자)",
-                        value=int(arg_default) if arg_default is not None else 5,
+                        value=default_int,
                         step=1,
                         help=arg_desc,
                     )
@@ -519,6 +532,10 @@ with tab_tool:
                         default_val = "dQw4w9WgXcQ"
                     elif "channel_id" in arg_name:
                         default_val = "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+                    elif "hashtag_id" in arg_name:
+                        default_val = "17841400000000001"
+                    elif "username" in arg_name:
+                        default_val = "oliveyoung_official"
 
                     param_inputs[arg_name] = st.text_input(
                         f"`{arg_name}`",
@@ -629,12 +646,13 @@ SCENARIO_PRESETS: Dict[str, Dict[str, Any]] = {
         "description": "제품군 관련 '유료 프로모션 포함' 표시 영상과 공개 반응 지표를 탐색합니다.",
     },
     "hashtag_surge_detection": {
-        "label": "성남맛집 vs 분당맛집/판교맛집 실시간 급상승 탐지",
+        "label": "성남맛집 vs 분당맛집/판교맛집 실시간 급상승 탐지 (시간 범위 지정 지원)",
         "params": {
             "base_hashtag": "성남맛집",
             "compare_hashtags": "분당맛집, 판교맛집",
+            "hours_range": "24",
         },
-        "description": "인스타그램 기준 해시태그의 최근 24시간 유입량과 인기글 기준선을 대조하여 급상승 여부를 수치로 감지합니다.",
+        "description": "인스타그램 기준 해시태그의 최근 N시간(기본 24h, 최대 24h 캡 적용) 유입량과 인기글 기준선을 대조하여 급상승 여부를 수치로 감지합니다.",
     },
     "competitor_campaign_tracking": {
         "label": "@oliveyoung_official 인스타그램 캠페인 현황 추적",
@@ -725,6 +743,19 @@ with tab_scenario:
                         for k, val in preset_info["params"].items():
                             st.session_state[f"scen_field_{selected_scen_name}_{k}"] = str(val)
                         st.rerun()
+
+        if selected_scen_name == "hashtag_surge_detection":
+            st.markdown(
+                """
+                <div class="info-card">
+                📸 <b>인스타그램 급상승 탐지 신규 업데이트 (hours_range & 24h Cap)</b><br>
+                • 🕒 <b>시간 범위(hours_range) 지정 지원</b>: 최근 N시간(기본 24h, 예: 6시간, 12시간) 윈도우 한정 필터링 및 참여도 재산정<br>
+                • 🛡️ <b>24시간 자동 캡(Cap) 적용</b>: Instagram Graph API 제약으로 24시간 초과 요청 시 최대 24시간으로 자동 캡 및 안내 고지<br>
+                • ⚖️ <b>표본 부족 방어</b>: 수집 게시물이 5건 미만일 경우 성급한 판정을 유보하고 <code>표본 부족</code> 안내 표시
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
         # 시나리오 메타데이터 카드
         with st.container():
@@ -947,8 +978,10 @@ with tab_agent:
 
     with scen_col2:
         st.caption("📸 **Instagram 전문 시나리오**")
-        if st.button("🔥 성남맛집 급상승 해시태그 감지", use_container_width=True):
-            quick_query = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 실시간으로 급상승 중인지 감지해줘."
+        if st.button("🔥 성남맛집 급상승 (최근 12시간)", use_container_width=True):
+            quick_query = "인스타그램에서 성남맛집 해시태그를 기준으로 분당맛집, 판교맛집과 비교해서 최근 12시간 동안 실시간으로 급상승 중인지 감지해줘."
+        if st.button("🕒 48시간 요청 시 24h 자동 캡 테스트", use_container_width=True):
+            quick_query = "인스타그램에서 성남맛집 해시태그를 최근 48시간 범위로 분석해서 급상승 중인지 알려줘."
         if st.button("💄 올리브영 캠페인 현황 추적", use_container_width=True):
             quick_query = "@oliveyoung_official 인스타그램 공식 계정의 최근 게시물 빈도와 팔로워 보정 참여율로 캠페인 현황을 분석해줘."
         if st.button("👗 무신사 메시지 시프트 감지", use_container_width=True):
@@ -1026,23 +1059,36 @@ with tab_agent:
 
                         # 단순 키워드 매칭으로 라우팅 시뮬레이션
                         if any(w in user_input for w in ["인스타", "해시태그", "성남 맛집", "분당 맛집", "판교 맛집"]):
-                            log_status("🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 자동 매칭 (신뢰도: 0.98)")
+                            import re as _re
+                            hour_matches = _re.findall(r"(\d+)\s*시간", user_input)
+                            req_hours = int(hour_matches[0]) if hour_matches else 24
+                            capped_hours = min(req_hours, 24)
+                            hours_notice = ""
+                            if req_hours > 24:
+                                hours_notice = (
+                                    f"> ⚠️ **시간 범위 고지**: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 이내 게시물만 제공하므로, "
+                                    f"요청하신 {req_hours}시간 대신 최대 한도인 24시간으로 자동 캡(Cap)이 적용되었습니다.\n\n"
+                                )
+
+                            log_status(f"🎯 **[시나리오 라우터 판정]** `hashtag_surge_detection` 자동 매칭 (신뢰도: 0.98, 분석 윈도우: {capped_hours}h)")
                             log_status("🔧 **[도구 실행]** `search_hashtag_id` (파라미터: `{'query': '성남맛집'}`)")
                             time.sleep(0.2)
                             log_status("✅ **[도구 완료]** `search_hashtag_id` (0.05초) - ID: `ht_성남맛집`")
-                            log_status("🔧 **[도구 실행]** `get_hashtag_recent_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
+                            log_status(f"🔧 **[도구 실행]** `get_hashtag_recent_media` (파라미터: `{{'hashtag_id': 'ht_성남맛집', 'hours_range': {req_hours}}}`)")
                             time.sleep(0.2)
-                            log_status("✅ **[도구 완료]** `get_hashtag_recent_media` (0.12초) - 최근 24h 게시물 6건 수집 완료")
+                            log_status(f"✅ **[도구 완료]** `get_hashtag_recent_media` (0.12초) - 최근 {capped_hours}h 게시물 6건 수집 및 필터링 완료")
                             log_status("🔧 **[도구 실행]** `get_hashtag_top_media` (파라미터: `{'hashtag_id': 'ht_성남맛집'}`)")
                             time.sleep(0.2)
                             log_status("✅ **[도구 완료]** `get_hashtag_top_media` (0.10초) - 누적 인기 기준선 대조 완료")
                             status_box.update(label=f"✅ 급상승 해시태그 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
 
                             final_ans = (
-                                "### 📊 [성남 맛집] 인스타그램 실시간 해시태그 분석 리포트 (Mock)\n\n"
-                                "• **키워드 정규화**: `#성남 맛집` $\\rightarrow$ `q=성남맛집`\n"
-                                "• **실시간 급상승 판정**: `#판교맛집` (최근 24h 참여도 기준선 대비 2.8배 급상승)\n"
-                                "※ 고지: Instagram Graph API는 최근 24시간 게시물만 제공하며 기간별 시계열 추이를 제공하지 않습니다."
+                                f"### 📊 [성남 맛집] 인스타그램 실시간 해시태그 분석 리포트 (Mock)\n\n"
+                                f"• **분석 시간 범위**: 최근 **{capped_hours}시간** (설정값: {req_hours}h, 기본 24h)\n"
+                                f"{hours_notice}"
+                                f"• **키워드 정규화**: `#성남 맛집` $\\rightarrow$ `q=성남맛집`\n"
+                                f"• **실시간 급상승 판정**: `#판교맛집` (최근 {capped_hours}h 참여도 기준선 대비 2.8배 급상승)\n"
+                                f"※ 고지: Instagram Graph API는 recent_media에 대해 최근 최대 24시간 게시물만 제공하며 기간별 시계열 추이를 제공하지 않습니다."
                             )
                         elif any(w in user_input for w in ["트렌드", "크로스", "쇼핑", "유튜브", "반응", "분석"]):
                             log_status("🎯 **[시나리오 라우터 판정]** `cross_platform_trend` 자동 매칭 (신뢰도: 0.95)")
