@@ -174,6 +174,157 @@ def _narrate_keyword_segmentation(
     return " ".join(sentences)
 
 
+def _narrate_new_product_trend(
+    llm: Optional[Any],
+    display_name: str,
+    start_date: str,
+    end_date: str,
+    category_result: str,
+    overall_result: str,
+    keyword_result: str,
+    direction_lines: List[str],
+) -> str:
+    """신제품 트렌드 조사 데이터를 표/숫자 나열이 아니라 결론 중심의 자연어 문단으로 설명한다."""
+    direction_summary = "\n".join(direction_lines) if direction_lines else "데이터 부족으로 추세 판정 불가"
+    if llm is not None:
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "당신은 신제품 마케팅을 준비하는 브랜드를 돕는 시장 분석가입니다. 네이버쇼핑 검색/클릭 트렌드 "
+                "데이터를 바탕으로 시장 진입 판단에 바로 참고할 수 있는 결론을 설명하십시오.\n"
+                "반드시 지켜야 할 규칙:\n"
+                "1. 표, 글머리 기호, 날짜별 숫자 나열 없이 자연스러운 문단(3~5문장)으로만 작성하십시오.\n"
+                "2. 해당 분야 전체 트렌드가 상승·하락·보합 중 어느 쪽인지, 어떤 세부 키워드가 뜨고 어떤 키워드가 "
+                "식고 있는지 결론을 먼저 제시하십시오.\n"
+                "3. 근거 수치는 문장 속에 자연스럽게 녹여 인용하십시오 (표 형태 금지).\n"
+                "4. 통합검색 기준 관심도와 네이버쇼핑 영역 기준 관심도는 서로 다른 모수이니 섞어서 절대비교하지 "
+                "말고, 필요하면 그 차이를 자연스럽게 짚어주십시오.\n"
+                "5. ratio는 조회 구간 내 최댓값을 100으로 한 상대값이며 절대 검색량이 아니라는 점을 결론 뒤에 "
+                "자연스럽게 덧붙이십시오.\n"
+                "6. 제공된 데이터에 없는 내용은 추측하거나 지어내지 마십시오.",
+            ),
+            (
+                "human",
+                "분야/키워드: {display_name}\n조회 기간: {start_date} ~ {end_date}\n\n"
+                "[분야 전체 트렌드 원본 데이터 (쇼핑 영역)]\n{category_result}\n\n"
+                "[통합검색 기준 키워드 전체 관심도 원본 데이터]\n{overall_result}\n\n"
+                "[쇼핑 영역 기준 세부 키워드 비교 원본 데이터]\n{keyword_result}\n\n"
+                "[참고: 이미 계산된 키워드별 추세 판정]\n{direction_summary}",
+            ),
+        ])
+        try:
+            chain = prompt | llm
+            response = chain.invoke({
+                "display_name": display_name,
+                "start_date": start_date,
+                "end_date": end_date,
+                "category_result": category_result,
+                "overall_result": overall_result,
+                "keyword_result": keyword_result,
+                "direction_summary": direction_summary,
+            })
+            text = response.content if hasattr(response, "content") else str(response)
+            if text and text.strip():
+                return text.strip()
+        except Exception:
+            pass  # LLM 호출 실패 시 아래 결정론적 폴백으로 진행
+
+    sentences = [f"'{display_name}' 관련 시장 트렌드를 {start_date}~{end_date} 기간 데이터로 살펴봤습니다."]
+    if direction_lines:
+        joined = ", ".join(line.lstrip("- ") for line in direction_lines)
+        sentences.append(f"세부 키워드별 추세는 {joined}로 나타났습니다.")
+    else:
+        sentences.append("세부 키워드별 추세는 데이터가 부족해 판단하기 어렵습니다.")
+    sentences.append(
+        "이 수치는 조회 구간 내 최댓값을 100으로 환산한 상대값이며 절대 검색량을 의미하지 않고, "
+        "통합검색 기준과 네이버쇼핑 영역 기준은 서로 다른 모수라 직접 비교할 수 없습니다."
+    )
+    return " ".join(sentences)
+
+
+def _narrate_target_audience_validation(
+    llm: Optional[Any],
+    display_name: str,
+    keyword: str,
+    target_gender: str,
+    target_age: str,
+    start_date: str,
+    end_date: str,
+    category_gender: str,
+    category_age: str,
+    keyword_gender: str,
+    keyword_age: str,
+    checks: List[str],
+) -> str:
+    """타겟 오디언스 검증 데이터를 표/숫자 나열이 아니라 결론 중심의 자연어 문단으로 설명한다."""
+    checks_summary = "\n".join(checks) if checks else "판정 불가 (데이터 없음)"
+    target_kr = f"성별={_GENDER_KR.get(target_gender, target_gender)}, 연령대={target_age}대"
+    if llm is not None:
+        prompt = ChatPromptTemplate.from_messages([
+            (
+                "system",
+                "당신은 마케팅 데이터 분석가입니다. 광고주가 설정한 타겟 오디언스가 실제 네이버쇼핑 검색·클릭 "
+                "데이터와 맞는지 검증한 결과를 설명하십시오.\n"
+                "반드시 지켜야 할 규칙:\n"
+                "1. 표, 글머리 기호, 날짜별 숫자 나열 없이 자연스러운 문단(3~5문장)으로만 작성하십시오.\n"
+                "2. 설정한 타겟이 실제 데이터와 맞는지 틀리는지 결론을 가장 먼저 명확히 제시하십시오.\n"
+                "3. 분야 전체 기준과 특정 키워드 기준의 결과가 다르면 그 차이도 짚어주십시오.\n"
+                "4. 근거 수치는 문장 속에 자연스럽게 녹여 인용하십시오 (표 형태 금지).\n"
+                "5. ages는 10세 단위로만 제공되고 ratio는 상대값이라는 점, 일시적 변동만으로 타겟이 틀렸다고 "
+                "단정할 수 없다는 점을 결론 뒤에 자연스럽게 덧붙이십시오.\n"
+                "6. 제공된 데이터에 없는 내용은 추측하지 마십시오.",
+            ),
+            (
+                "human",
+                "분야: {display_name} / 키워드: {keyword}\n설정한 타겟: {target_kr}\n"
+                "조회 기간: {start_date} ~ {end_date}\n\n"
+                "[분야 전체 성별 트렌드 원본 데이터]\n{category_gender}\n\n"
+                "[분야 전체 연령별 트렌드 원본 데이터]\n{category_age}\n\n"
+                "[키워드 성별 트렌드 원본 데이터]\n{keyword_gender}\n\n"
+                "[키워드 연령별 트렌드 원본 데이터]\n{keyword_age}\n\n"
+                "[참고: 이미 계산된 타겟 일치 여부 판정]\n{checks_summary}",
+            ),
+        ])
+        try:
+            chain = prompt | llm
+            response = chain.invoke({
+                "display_name": display_name,
+                "keyword": keyword,
+                "target_kr": target_kr,
+                "start_date": start_date,
+                "end_date": end_date,
+                "category_gender": category_gender,
+                "category_age": category_age,
+                "keyword_gender": keyword_gender,
+                "keyword_age": keyword_age,
+                "checks_summary": checks_summary,
+            })
+            text = response.content if hasattr(response, "content") else str(response)
+            if text and text.strip():
+                return text.strip()
+        except Exception:
+            pass  # LLM 호출 실패 시 아래 결정론적 폴백으로 진행
+
+    mismatches = [c for c in checks if "⚠️" in c]
+    if not checks:
+        verdict = "데이터가 부족해 타겟 적합성을 판단하기 어렵습니다."
+    elif not mismatches:
+        verdict = f"설정하신 타겟({target_kr})이 실제 검색·클릭 데이터와 대체로 일치합니다."
+    elif len(mismatches) == len(checks):
+        verdict = f"설정하신 타겟({target_kr})은 실제 검색·클릭 데이터와 맞지 않습니다."
+    else:
+        verdict = f"설정하신 타겟({target_kr})이 일부 기준에서는 맞지만 다른 기준에서는 어긋나는 혼재된 결과입니다."
+    detail = " ".join(c.lstrip("- ") for c in checks) if checks else ""
+    sentences = [verdict]
+    if detail:
+        sentences.append(detail)
+    sentences.append(
+        "ages는 10세 단위로만 제공되고 ratio는 구간 내 상대값이므로, 특정 구간의 일시적 변동만으로 "
+        "타겟이 틀렸다고 단정하기는 어렵습니다."
+    )
+    return " ".join(sentences)
+
+
 def _default_start() -> str:
     return str(date.today() - timedelta(days=90))
 
@@ -270,20 +421,19 @@ class NewProductKeywordTrendScenario(BaseScenario):
 
         keyword_series = _parse_series(keyword_result)
         direction_lines = [f"- {title}: {_trend_direction(points)}" for title, points in keyword_series.items()]
-        direction_summary = "\n".join(direction_lines) if direction_lines else "- 판단 불가 (데이터 없음)"
 
         note_block = f"{code_note}\n\n" if code_note else ""
-        return (
-            f"### [{display_name}] 신제품 키워드 트렌드 조사\n"
-            f"{note_block}"
-            f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
-            f"#### 1. 분야 전체 트렌드 (쇼핑 영역)\n{category_result}\n\n"
-            f"#### 2. 통합검색 기준 키워드 전체 관심도\n{overall_result}\n\n"
-            f"#### 3. 쇼핑 영역 기준 세부 키워드 비교\n{keyword_result}\n\n"
-            f"#### 4. 추세 판정 (구간 시작 대비 종료 시점, ±5 이내는 보합)\n{direction_summary}\n\n"
-            "ratio는 조회 구간 내 최댓값을 100으로 정규화한 상대값이며, 절대 검색량이 아닙니다. "
-            "통합검색 기준과 쇼핑 영역 기준은 서로 다른 모수이므로 직접 비교하지 마십시오."
+        summary = _narrate_new_product_trend(
+            llm=context.get("llm") if context else None,
+            display_name=display_name,
+            start_date=params.start_date,
+            end_date=params.end_date,
+            category_result=category_result,
+            overall_result=overall_result,
+            keyword_result=keyword_result,
+            direction_lines=direction_lines,
         )
+        return f"{note_block}{summary}"
 
 
 class TargetAudienceValidationParams(BaseModel):
@@ -383,19 +533,21 @@ class TargetAudienceValidationScenario(BaseScenario):
                 checks.append(f"- {label}: ⚠️ 실제 최고 관심 세그먼트는 '{top[0]}'(ratio {top[1]})이나, 설정한 타겟은 '{target}'이라 불일치")
 
         note_block = f"{code_note}\n\n" if code_note else ""
-        return (
-            f"### [{display_name} / {params.keyword}] 타겟 오디언스 검증\n"
-            f"{note_block}"
-            f"설정한 타겟: 성별={params.target_gender}, 연령대={params.target_age}\n"
-            f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
-            f"#### 1. 분야 전체 성별 트렌드\n{category_gender}\n\n"
-            f"#### 2. 분야 전체 연령별 트렌드\n{category_age}\n\n"
-            f"#### 3. '{params.keyword}' 키워드 성별 트렌드\n{keyword_gender}\n\n"
-            f"#### 4. '{params.keyword}' 키워드 연령별 트렌드\n{keyword_age}\n\n"
-            f"#### 5. 타겟 일치 여부 검증\n" + "\n".join(checks) + "\n\n"
-            "ages는 10세 단위(10~60)로만 제공되며, ratio는 구간 내 상대값이라 특정 구간의 일시적 변동만으로 "
-            "타겟이 틀렸다고 단정할 수 없습니다."
+        summary = _narrate_target_audience_validation(
+            llm=context.get("llm") if context else None,
+            display_name=display_name,
+            keyword=params.keyword,
+            target_gender=params.target_gender,
+            target_age=params.target_age,
+            start_date=params.start_date,
+            end_date=params.end_date,
+            category_gender=category_gender,
+            category_age=category_age,
+            keyword_gender=keyword_gender,
+            keyword_age=keyword_age,
+            checks=checks,
         )
+        return f"{note_block}{summary}"
 
 
 class KeywordAudienceSegmentationParams(BaseModel):

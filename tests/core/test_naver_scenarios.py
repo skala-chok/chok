@@ -41,13 +41,15 @@ def test_new_product_keyword_trend_calls_tools_and_detects_direction():
         category_name="패션의류", category_code="50000000",
         keywords="니트,코트", start_date="2026-01-01", end_date="2026-03-01",
     )
-    result = scenario.execute(params, tools)
+    result = scenario.execute(params, tools)  # context 없음 -> 문장형 폴백 경로
 
     assert lookup.invoke.call_count == 1
     assert category.invoke.call_count == overall.invoke.call_count == keyword.invoke.call_count == 1
+    # 표/글머리 기호가 아니라 자연어 문장으로 결론이 나와야 한다.
+    assert "#### " not in result
     assert "니트: 하락 (90.0 → 40.0)" in result
     assert "코트: 상승 (30.0 → 90.0)" in result
-    assert "절대 검색량이 아닙니다" in result
+    assert "절대 검색량을 의미하지 않고" in result
     # 라우터가 준 코드가 실제 후보와 일치하므로 정정 안내는 없어야 한다.
     assert "자동 정정" not in result
 
@@ -117,14 +119,16 @@ def test_target_audience_validation_falls_back_to_keyword_when_category_name_emp
     }
     params = TargetAudienceValidationParams(
         category_name="", category_code="", keyword="러닝화",
-        target_gender="m", target_age="20", start_date="2026-06-11", end_date="2026-09-11",
+        target_gender="m", target_age="40", start_date="2026-06-11", end_date="2026-09-11",
     )
-    result = scenario.execute(params, tools)
+    result = scenario.execute(params, tools)  # context 없음 -> 문장형 폴백 경로
 
     # find_naver_category_code가 빈 category_name이 아니라 keyword("러닝화")로 호출돼야 한다.
     lookup.invoke.assert_called_once_with({"keyword": "러닝화"})
     assert "가드레일" not in result
-    assert "사용된 category_code: 50003854" in result
+    assert "#### " not in result
+    # code_note 안내문에 자동 조회된 코드가 언급돼야 한다 (category_name이 비어 keyword로 대체 조회됨).
+    assert "50003854" in result
     assert "일치" in result
 
 
