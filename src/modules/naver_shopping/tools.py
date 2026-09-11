@@ -18,8 +18,8 @@ def get_shopping_trends(keywords: str, start_date: str, end_date: str) -> str:
     """네이버 통합검색 기준 검색어 관심도 추이를 조회합니다.
 
     Args:
-        keywords: 쉼표로 구분된 기준 키워드 문자열 (예: '아이폰16, 갤럭시S24').
-        start_date: 조회 시작일 (YYYY-MM-DD, 2017-08-01 이후).
+        keywords: 쉼표로 구분된 기준 키워드 문자열, 최대 5개 (예: '아이폰16, 갤럭시S24').
+        start_date: 조회 시작일 (YYYY-MM-DD, 2016-01-01 이후).
         end_date: 조회 종료일 (YYYY-MM-DD).
 
     Returns:
