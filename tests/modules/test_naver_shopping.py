@@ -517,6 +517,54 @@ def test_client_get_keyword_gender_trend_openapi_failure_fallback(mock_post):
 
 
 @patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_category_gender_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 분야 성별 트렌드 폴백 목 데이터 검증."""
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+    client = NaverShoppingClient()
+    result = client.get_category_gender_trend("50000000", "2026-01-01", "2026-01-31")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_category_age_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 분야 연령별 트렌드 폴백 목 데이터 검증."""
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+
+    client = NaverShoppingClient()
+    result = client.get_category_age_trend("50000000", "2026-01-01", "2026-01-31")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_category_keyword_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 분야 내 키워드별 트렌드 폴백 목 데이터 검증."""
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+    client = NaverShoppingClient()
+    result = client.get_category_keyword_trend("50000000", {"니트": "니트"}, "2026-01-01", "2026-01-31")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_client_get_keyword_age_trend_openapi_failure_fallback(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 키워드 연령별 트렌드 폴백 목 데이터 검증."""
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+
+    client = NaverShoppingClient()
+    result = client.get_keyword_age_trend("50000000", "니트", "2026-01-01", "2026-01-31")
+
+    assert "results" in result
+    assert "[Fallback Mock]" in result["results"][0]["title"]
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
 def test_get_shopping_trends_openapi_failure_fallback_via_tool(mock_post):
     """폴백 목 데이터가 Tool 계층까지 정상적으로 전파되는지 검증 (크래시 없이 응답)."""
     mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
@@ -525,6 +573,66 @@ def test_get_shopping_trends_openapi_failure_fallback_via_tool(mock_post):
         "start_date": "2026-01-01",
         "end_date": "2026-02-01",
     })
+    assert "[Fallback Mock]" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_category_trend_openapi_failure_fallback_via_tool(mock_post):
+    """handoff/04_testing_harness.md 3.3 - 나머지 6개 쇼핑 인사이트 도구도 폴백 전파를 검증."""
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+    res = get_shopping_category_trend.invoke(
+        {"categories": "패션의류:50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "[Fallback Mock]" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_category_gender_trend_openapi_failure_fallback_via_tool(mock_post):
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+    res = get_shopping_category_gender_trend.invoke(
+        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "[Fallback Mock]" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_category_age_trend_openapi_failure_fallback_via_tool(mock_post):
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+    res = get_shopping_category_age_trend.invoke(
+        {"category_code": "50000000", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "[Fallback Mock]" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_keyword_trend_openapi_failure_fallback_via_tool(mock_post):
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+    res = get_shopping_keyword_trend.invoke(
+        {
+            "category_code": "50000000",
+            "keywords": "니트:니트",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+        }
+    )
+    assert "[Fallback Mock]" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_keyword_gender_trend_openapi_failure_fallback_via_tool(mock_post):
+    mock_post.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+    res = get_shopping_keyword_gender_trend.invoke(
+        {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
+    assert "[Fallback Mock]" in res
+
+
+@patch("src.modules.naver_shopping.client.requests.post")
+def test_get_shopping_keyword_age_trend_openapi_failure_fallback_via_tool(mock_post):
+    mock_post.side_effect = requests.exceptions.Timeout("Read timed out")
+    res = get_shopping_keyword_age_trend.invoke(
+        {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
+    )
     assert "[Fallback Mock]" in res
 
 
