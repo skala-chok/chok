@@ -263,6 +263,49 @@ class TestScenario2CompetitorCampaignTracking:
         report = CampaignTrackingReport(**data)
         assert len(report.competitors) == 2
 
+    def test_scenario2_non_dining_brand_keywords_exclusion(self):
+        """올리브영 등 비외식 브랜드 분석 시 하드코딩된 맛집 키워드가 배제되고 동적 해시태그가 추출되는지 검증."""
+        @tool
+        def mock_oliveyoung_profile(username: str) -> str:
+            """올리브영 프로필 Mock 도구."""
+            return (
+                f"### [경쟁사 공식 프로필] @{username} (올리브영)\n"
+                f"• 공식 채널 검증: Bio=\"건강하고 아름다운 일상을 위한 올리브영 공식 인스타그램\" | Web=\"https://oliveyoung.co.kr\"\n"
+                f"• 팔로워: 1,500,000명 | 팔로우: 10명 | 총 게시물: 2,500개\n"
+                f"• 수집된 최근 게시물: 2건\n\n"
+                f"1. [ID: oy1] 좋아요: 5,000개 | 댓글: 350개 | 일시: 2026-09-10T12:00:00+0000\n"
+                f"   - 캡션: \"9월 올영세일 시작! 최대 70% 할인 특가 #올영세일 #올리브영 #뷰티 #할인 #광고\"\n"
+                f"2. [ID: oy2] 좋아요: 3,200개 | 댓글: 120개 | 일시: 2026-09-05T10:00:00+0000\n"
+                f"   - 캡션: \"가을 환절기 보습 케어 루틴 추천 #스킨케어 #보습 #올리브영추천\"\n"
+                f"• 게시물 타임스탬프 목록 (빈도 계산용): [\"2026-09-10T12:00:00+0000\", \"2026-09-05T10:00:00+0000\"]\n"
+                f"※ 지표 고지: 조회수(View Count) 부재."
+            )
+
+        scen = CompetitorCampaignTrackingScenario()
+        tools = {"get_competitor_profile": mock_oliveyoung_profile}
+        params = CompetitorCampaignTrackingParams(
+            competitor_usernames=["oliveyoung_official"],
+            target_topic="올영세일",
+        )
+
+        output = scen.execute(params=params, tools=tools)
+        json_str = output.split("```json")[1].split("```")[0].strip()
+        data = json.loads(json_str)
+        report = CampaignTrackingReport(**data)
+
+        comp = report.competitors[0]
+        # 맛집/외식 키워드가 일절 포함되지 않아야 함
+        for forbidden in ["성남", "분당", "판교", "맛집", "회식", "파스타", "카페"]:
+            assert forbidden not in comp.campaign_keywords_found
+
+        # 동적으로 추출된 뷰티/세일 해시태그 및 타깃 토픽 포함 검증
+        assert "올영세일" in comp.campaign_keywords_found
+        assert "올리브영" in comp.campaign_keywords_found
+        assert "뷰티" in comp.campaign_keywords_found
+        # 광고 컴플라이언스 태그는 제외되어야 함
+        assert "광고" not in comp.campaign_keywords_found
+
+
 
 class TestScenario3CompetitorMessageShift:
     """시나리오 3: 경쟁사 메시지 방향 변화 분석 통과 기준 검증."""

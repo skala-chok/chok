@@ -238,13 +238,23 @@ class CompetitorCampaignTrackingScenario(BaseScenario):
             # 참여율 = ((평균좋아요 + 평균댓글) / 팔로워수) * 100
             eng_rate = ((avg_likes + avg_comments) / followers) * 100 if followers > 0 else 0.0
 
-            # 5. 타깃 토픽 관련 키워드 추출
+            # 5. 타깃 토픽 및 캡션 내 실제 해시태그 기반 키워드 동적 추출
             topic_keywords = []
             if params.target_topic and params.target_topic in tool_res_str:
                 topic_keywords.append(params.target_topic)
-            for kw in ["성남", "분당", "판교", "맛집", "회식", "파스타", "카페"]:
-                if kw in tool_res_str and kw not in topic_keywords:
-                    topic_keywords.append(kw)
+
+            # 캡션 내 실제 해시태그(#...) 추출 (광고/협찬 표기 및 시스템 태그 제외)
+            extracted_hashtags = re.findall(r"#([a-zA-Z0-9가-힣_]+)", tool_res_str)
+            for tag in extracted_hashtags:
+                if tag in ["광고", "협찬", "AD", "ad", "Fallback", "Mock"]:
+                    continue
+                if tag not in topic_keywords:
+                    topic_keywords.append(tag)
+                if len(topic_keywords) >= 8:
+                    break
+
+            if not topic_keywords and params.target_topic:
+                topic_keywords.append(params.target_topic)
 
             competitors_stats.append(
                 CompetitorStats(
