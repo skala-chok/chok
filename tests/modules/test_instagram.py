@@ -191,6 +191,26 @@ class TestInstagramOpenApiFallbackHarness:
         assert len(bd["media"]["data"]) >= 1
         assert "[Fallback Mock]" in bd["media"]["data"][0]["caption"]
 
+    @patch("requests.get")
+    def test_get_business_discovery_fallback_domain_neutral(self, mock_get):
+        """장애 발생 시 폴백 목 데이터가 특정 맛집에 편향되지 않고 범용 브랜드 템플릿을 반환하는지 검증."""
+        mock_get.side_effect = requests.exceptions.RequestException("Network down")
+
+        client = InstagramApiClient()
+        res = client.get_business_discovery("oliveyoung_official")
+
+        bd = res["business_discovery"]
+        # 맛집/외식 키워드가 없어야 함
+        for forbidden in ["맛집", "파스타", "회식", "미식 가이드"]:
+            assert forbidden not in bd["biography"]
+            for m in bd["media"]["data"]:
+                assert forbidden not in m["caption"]
+
+        # 일반 브랜드 및 공식 프로모션 키워드 포함 검증
+        assert "공식" in bd["biography"]
+        assert "신제품" in bd["media"]["data"][0]["caption"]
+
+
 
 class TestInstagramGuardrails:
     def test_validate_search_hashtag_id(self):
@@ -207,6 +227,9 @@ class TestInstagramGuardrails:
     def test_validate_media_queries(self):
         gr = InstagramGuardrail()
         assert gr.validate_tool_args("get_hashtag_recent_media", {"hashtag_id": "12345"}).passed is True
+        assert gr.validate_tool_args("get_hashtag_recent_media", {"hashtag_id": "12345", "hours_range": 12}).passed is True
+        assert gr.validate_tool_args("get_hashtag_recent_media", {"hashtag_id": "12345", "hours_range": -5}).passed is False
+        assert gr.validate_tool_args("get_hashtag_recent_media", {"hashtag_id": "12345", "hours_range": "abc"}).passed is False
         assert gr.validate_tool_args("get_hashtag_recent_media", {"hashtag_id": ""}).passed is False
         assert gr.validate_tool_args("get_hashtag_top_media", {"hashtag_id": "12345"}).passed is True
         assert gr.validate_tool_args("get_hashtag_top_media", {"hashtag_id": ""}).passed is False
@@ -258,6 +281,59 @@ class TestInstagramTools:
         assert "최근 24시간" in res
         assert "시계열 추이" in res
         assert "작성자 정보" in res
+
+    @patch.object(InstagramApiClient, "get_hashtag_recent_media")
+    def test_get_hashtag_recent_media_tool_custom_hours(self, mock_recent):
+        mock_recent.return_value = {
+            "data": [
+                {
+                    "id": "m1",
+                    "caption": "방금 전 게시물 #성남맛집",
+                    "like_count": 50,
+                    "comments_count": 5,
+                    "media_type": "IMAGE",
+                    "permalink": "https://insta.com/p/m1",
+                    "timestamp": "2026-09-11T12:00:00+0000",
+                },
+                {
+                    "id": "m2",
+                    "caption": "15시간 전 게시물 #성남맛집",
+                    "like_count": 30,
+                    "comments_count": 2,
+                    "media_type": "IMAGE",
+                    "permalink": "https://insta.com/p/m2",
+                    "timestamp": "2026-09-10T21:00:00+0000",
+                }
+            ]
+        }
+
+        # 6시간 지정 시 m1만 포함되고 m2(15h 전)는 제외되어야 함
+        res = get_hashtag_recent_media.invoke({"hashtag_id": "ht_999", "hours_range": 6})
+        assert "최근 6시간 윈도우 한정" in res
+        assert "수집 건수: 1건" in res
+        assert "방금 전 게시물" in res
+        assert "15시간 전 게시물" not in res
+
+    @patch.object(InstagramApiClient, "get_hashtag_recent_media")
+    def test_get_hashtag_recent_media_tool_hours_cap_over_24(self, mock_recent):
+        mock_recent.return_value = {
+            "data": [
+                {
+                    "id": "m1",
+                    "caption": "최신글 #성남맛집",
+                    "like_count": 10,
+                    "comments_count": 1,
+                    "media_type": "IMAGE",
+                    "permalink": "https://insta.com/p/m1",
+                    "timestamp": "2026-09-11T10:00:00+0000",
+                }
+            ]
+        }
+
+        # 48시간 지정 시 24시간 캡 적용 및 고지 포함 확인
+        res = get_hashtag_recent_media.invoke({"hashtag_id": "ht_999", "hours_range": 48})
+        assert "최근 24시간 윈도우 한정" in res
+        assert "API 최대 한도인 24시간" in res
 
     @patch.object(InstagramApiClient, "get_business_discovery")
     def test_get_competitor_profile_tool_view_count_disclaimer(self, mock_bd):

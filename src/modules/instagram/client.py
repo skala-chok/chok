@@ -108,7 +108,7 @@ class InstagramApiClient:
                 "id": f"fallback_user_{target_username}",
                 "username": target_username,
                 "name": f"{target_username} (공식)",
-                "biography": f"[Fallback Mock] {target_username} 인스타그램 공식 채널입니다. 성남/분당/판교 미식 가이드.",
+                "biography": f"[Fallback Mock] {target_username} 인스타그램 공식 채널입니다. 브랜드 소식 및 공식 프로모션 안내.",
                 "website": f"https://www.{target_username}.kr",
                 "follows_count": 150,
                 "followers_count": 50000,
@@ -117,7 +117,7 @@ class InstagramApiClient:
                     "data": [
                         {
                             "id": f"fallback_{target_username}_m1",
-                            "caption": f"[Fallback Mock] {target_username} 성남 맛집 1탄! 인생 파스타집 발견 #성남맛집 #파스타 #광고",
+                            "caption": f"[Fallback Mock] {target_username} 공식 시즌 신제품 라인업 출시! 지금 바로 만나보세요 #{target_username} #신제품 #공식 #프로모션 #광고",
                             "like_count": 1200,
                             "comments_count": 85,
                             "timestamp": "2026-09-10T12:00:00+0000",
@@ -125,7 +125,7 @@ class InstagramApiClient:
                         },
                         {
                             "id": f"fallback_{target_username}_m2",
-                            "caption": f"[Fallback Mock] {target_username} 분당 판교 직장인 회식 추천 리스트 #판교맛집 #회식",
+                            "caption": f"[Fallback Mock] {target_username} 공식 이벤트 진행 중: 특별한 혜택을 놓치지 마세요 #{target_username} #이벤트 #공식",
                             "like_count": 950,
                             "comments_count": 42,
                             "timestamp": "2026-09-03T11:00:00+0000",
@@ -133,7 +133,7 @@ class InstagramApiClient:
                         },
                         {
                             "id": f"fallback_{target_username}_m3",
-                            "caption": f"[Fallback Mock] 이전 아카이브: 숨은 골목 식당 탐방기 #성남맛집 #로컬맛집",
+                            "caption": f"[Fallback Mock] 이전 아카이브: {target_username} 브랜드 스토리 및 대표 하이라이트 #{target_username} #브랜드캠페인 #아카이브",
                             "like_count": 600,
                             "comments_count": 20,
                             "timestamp": "2026-08-20T09:00:00+0000",

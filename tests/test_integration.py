@@ -43,14 +43,13 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert len(enabled) == 5
 
     runner = AgentRunner(registry=registry, llm=MagicMock())
-    # yt_search(6) + yt_analytics(4) + naver_search(2) + naver_shopping(8) + instagram(4) = 24 tools
-    assert len(runner.tools) == 24
+    # yt_search(4) + yt_analytics(4) + naver_search(2) + naver_shopping(8) + instagram(4) = 22 tools
+    assert len(runner.tools) == 22
 
     tool_names = {t.name for t in runner.tools}
     expected_tools = {
-        "search_youtube_videos",
-        "get_video_transcript",
         "find_youtube_channel",
+        "get_channel_details",
         "get_channel_videos",
         "get_competitor_recent_uploads",
         "search_paid_promotion_videos",
@@ -98,7 +97,7 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     assert {m.name for m in enabled} == {"yt_search", "yt_analytics"}
 
     runner_yt = AgentRunner(registry=registry, llm=MagicMock())
-    assert len(runner_yt.tools) == 10
+    assert len(runner_yt.tools) == 8
 
     # 2. Only Naver API credentials provided
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
@@ -179,15 +178,18 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     runner = AgentRunner(registry=registry, llm=MagicMock())
     tools_map = {t.name: t for t in runner.tools}
 
-    # Worker 1: search_youtube_videos (max_results > 10)
-    yt_search_res = tools_map["search_youtube_videos"].invoke({"query": "test", "max_results": 20})
+    # Worker 1: get_channel_videos (max_results > 50)
+    yt_search_res = tools_map["get_channel_videos"].invoke({
+        "channel_id": "UC123", "published_after": "2026-01-01T00:00:00Z",
+        "max_results": 100,
+    })
     assert "[가드레일 검증 실패]" in yt_search_res
-    assert "max_results는 최소 1개, 최대 10개까지 가능합니다." in yt_search_res
+    assert "max_results는 최소 1개, 최대 50개까지 가능합니다." in yt_search_res
 
-    # Worker 1: get_video_transcript (invalid video_id)
-    yt_transcript_res = tools_map["get_video_transcript"].invoke({"video_id": "a"})
-    assert "[가드레일 검증 실패]" in yt_transcript_res
-    assert "유효하지 않은 YouTube video_id입니다." in yt_transcript_res
+    # Worker 1: get_channel_details (empty channel_id)
+    yt_details_res = tools_map["get_channel_details"].invoke({"channel_id": ""})
+    assert "[가드레일 검증 실패]" in yt_details_res
+    assert "channel_id가 누락되었습니다." in yt_details_res
 
     # Worker 2: get_channel_stats (empty channel_id)
     yt_channel_res = tools_map["get_channel_stats"].invoke({"channel_id": ""})
