@@ -166,44 +166,67 @@ class AgentRunner:
                     else:
                         scenario_tools = dict(self.tools_map)
 
-                    # Wrap tools with real-time on_status reporting if hook provided
-                    if on_status:
+                    # Wrap tools with real-time on_status reporting and callback notification if hooks provided
+                    if on_status or callbacks:
+                        cb_list = callbacks if isinstance(callbacks, list) else ([callbacks] if callbacks else [])
                         reporting_tools = {}
                         for t_name, original_tool in scenario_tools.items():
                             class _ReportingToolWrapper:
-                                def __init__(self, inner, name, reporter):
+                                def __init__(self, inner, name, reporter, cbs):
                                     self._inner = inner
                                     self.name = name
                                     self._reporter = reporter
+                                    self._callbacks = cbs
                                     self.description = getattr(inner, "description", "")
                                     self.args_schema = getattr(inner, "args_schema", None)
 
                                 def invoke(self, input_args, *args, **kwargs):
-                                    self._reporter(
-                                        f"🔧 **[도구 실행]** `{self.name}`\n- 파라미터: `{input_args}`"
-                                    )
+                                    if self._reporter:
+                                        self._reporter(
+                                            f"🔧 **[도구 실행]** `{self.name}`\n- 파라미터: `{input_args}`"
+                                        )
                                     t0 = time.time()
                                     try:
                                         res = self._inner.invoke(input_args, *args, **kwargs)
                                         el = time.time() - t0
                                         res_str = str(res)
-                                        preview = res_str[:120] + "..." if len(res_str) > 120 else res_str
-                                        self._reporter(
-                                            f"✅ **[도구 완료]** `{self.name}` ({el:.2f}초)\n> {preview}"
-                                        )
+                                        if self._reporter:
+                                            preview = res_str[:120] + "..." if len(res_str) > 120 else res_str
+                                            self._reporter(
+                                                f"✅ **[도구 완료]** `{self.name}` ({el:.2f}초)\n> {preview}"
+                                            )
+                                        # 도구 실행 결과를 콜백 핸들러들에 전달
+                                        for cb in self._callbacks:
+                                            if hasattr(cb, "record_tool_result"):
+                                                try:
+                                                    cb.record_tool_result(self.name, res_str)
+                                                except Exception:
+                                                    pass
+                                            elif hasattr(cb, "on_tool_end"):
+                                                try:
+                                                    cb.on_tool_end(res_str, name=self.name)
+                                                except Exception:
+                                                    pass
                                         return res
                                     except Exception as e_tool:
                                         el = time.time() - t0
-                                        self._reporter(
-                                            f"❌ **[도구 오류]** `{self.name}` ({el:.2f}초): {e_tool}"
-                                        )
+                                        if self._reporter:
+                                            self._reporter(
+                                                f"❌ **[도구 오류]** `{self.name}` ({el:.2f}초): {e_tool}"
+                                            )
+                                        for cb in self._callbacks:
+                                            if hasattr(cb, "on_tool_error"):
+                                                try:
+                                                    cb.on_tool_error(e_tool, name=self.name)
+                                                except Exception:
+                                                    pass
                                         raise
 
                                 def __call__(self, *args, **kwargs):
                                     return self.invoke(*args, **kwargs)
 
                             reporting_tools[t_name] = _ReportingToolWrapper(
-                                original_tool, t_name, on_status
+                                original_tool, t_name, on_status, cb_list
                             )
                         scenario_tools_to_inject = reporting_tools
                     else:

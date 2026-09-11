@@ -7,7 +7,7 @@ import re
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 # 프로젝트 루트를 sys.path에 추가하여 src 모듈 임포트 지원
 PROJECT_ROOT = str(Path(__file__).resolve().parent)
@@ -414,6 +414,13 @@ with st.sidebar:
         help="API 키가 없거나 쿼터를 아끼고 싶을 때 사전 정의된 목업 응답으로 테스트합니다.",
     )
 
+    show_raw_json = st.toggle(
+        "📄 응답 JSON 표시",
+        value=False,
+        key="sidebar_show_raw_json",
+        help="시나리오 분석 결과의 원본 JSON 데이터 블록 표시 여부를 제어합니다 (기본: OFF - 리포트 본문만 표시하여 응답 노이즈 감소).",
+    )
+
     model_name = st.text_input(
         "적용 LLM 모델명",
         value=settings.MODEL_NAME or "gpt-4o",
@@ -593,28 +600,34 @@ from langchain_core.callbacks import BaseCallbackHandler
 
 
 class StreamlitToolCallbackHandler(BaseCallbackHandler):
-    """LangChain ReAct 에이전트의 도구 호출 및 액션을 Streamlit status_box에 실시간 로깅하는 핸들러."""
+    """LangChain ReAct 에이전트 및 시나리오의 도구 호출을 Streamlit status_box에 로깅하고 원본 결과를 수집하는 핸들러."""
 
     def __init__(self, status_container, log_store: List[str]):
         super().__init__()
         self.status = status_container
         self.log_store = log_store
+        self.tool_results: Dict[str, str] = {}
+        self._current_tool_name: Optional[str] = None
 
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs: Any) -> None:
-        tool_name = serialized.get("name", "tool")
+        tool_name = serialized.get("name") or kwargs.get("name") or "tool"
+        self._current_tool_name = tool_name
         msg = f"🔧 **[도구 실행]** `{tool_name}`\n- 파라미터: `{input_str}`"
         self.status.write(msg)
         self.log_store.append(msg)
 
     def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        tool_name = kwargs.get("name") or self._current_tool_name or "tool"
         out_str = str(output)
+        self.tool_results[tool_name] = out_str
         preview = out_str[:160] + "..." if len(out_str) > 160 else out_str
-        msg = f"✅ **[도구 완료]**\n> {preview}"
+        msg = f"✅ **[도구 완료]** `{tool_name}`\n> {preview}" if tool_name != "tool" else f"✅ **[도구 완료]**\n> {preview}"
         self.status.write(msg)
         self.log_store.append(msg)
 
     def on_tool_error(self, error: BaseException, **kwargs: Any) -> None:
-        msg = f"❌ **[도구 오류]**: `{error}`"
+        tool_name = kwargs.get("name") or self._current_tool_name or "tool"
+        msg = f"❌ **[도구 오류]** `{tool_name}`: `{error}`" if tool_name != "tool" else f"❌ **[도구 오류]**: `{error}`"
         self.status.write(msg)
         self.log_store.append(msg)
 
@@ -624,6 +637,10 @@ class StreamlitToolCallbackHandler(BaseCallbackHandler):
             msg = f"🤔 **[에이전트 판단]** 도구 `{tool_name}` 호출을 결정했습니다."
             self.status.write(msg)
             self.log_store.append(msg)
+
+    def record_tool_result(self, tool_name: str, result: Any) -> None:
+        """시나리오 체인 또는 외부에서 도구 실행 결과를 콜백 핸들러에 직접 기록합니다."""
+        self.tool_results[tool_name] = str(result)
 
 
 # ==============================================================================
@@ -779,9 +796,63 @@ def _render_trend_charts(chart_tool_results: Dict[str, str]) -> None:
             plt.close(fig)
 
 
-def _render_agent_message(msg: Dict[str, Any]) -> None:
-    st.markdown(msg["content"])
+_JSON_PREFIX_RE = re.compile(r"^```(?:json)?\s*\n(.*?)\n```(?:\n+|$)", re.DOTALL)
+_JSON_SUFFIX_RE = re.compile(r"(?:\n+|^)```(?:json)?\s*\n(.*?)\n```\s*$", re.DOTALL)
+
+
+def _extract_json_payload(content: str) -> Tuple[Optional[str], str]:
+    """응답 텍스트에서 ```json ... ``` 블록을 분리하여 (json_str, clean_markdown) 튜플로 반환한다.
+
+    시나리오 실행 결과 상단/하단에 포함된 거대한 JSON 페이로드를 감지하여
+    깔끔한 마크다운 리포트 본문과 원본 JSON 데이터를 분리합니다.
+    """
+    if not isinstance(content, str):
+        return None, str(content)
+
+    stripped = content.strip()
+    match_start = _JSON_PREFIX_RE.match(stripped)
+    if match_start:
+        json_str = match_start.group(1).strip()
+        markdown_body = stripped[match_start.end():].strip()
+        return json_str, markdown_body
+
+    match_end = _JSON_SUFFIX_RE.search(stripped)
+    if match_end and match_end.start() > 0:
+        json_str = match_end.group(1).strip()
+        markdown_body = stripped[:match_end.start()].strip()
+        return json_str, markdown_body
+
+    return None, content
+
+
+def _render_agent_message(msg: Dict[str, Any], show_json: bool = False) -> None:
+    """에이전트 응답 메시지를 렌더링한다. show_json 토글 상태에 따라 원본 JSON 표시를 제어한다."""
+    content = msg.get("content", "")
+    json_str, clean_markdown = _extract_json_payload(content)
+
+    # 1. 마크다운 리포트 본문 먼저 렌더링 (노이즈 없는 핵심 분석 결과)
+    if clean_markdown:
+        st.markdown(clean_markdown)
+    elif not json_str:
+        st.markdown(content)
+    else:
+        # 마크다운 본문 없이 순수 JSON만 반환된 경우, 숨기면 빈 화면이 되므로 기본 표시
+        with st.expander("📄 원본 응답 JSON 데이터", expanded=True):
+            try:
+                st.json(json.loads(json_str))
+            except Exception:
+                st.code(json_str, language="json")
+
+    # 2. 트렌드 차트 시각화 (matplotlib)
     _render_trend_charts(msg.get("chart_tool_results") or {})
+
+    # 3. 원본 JSON 데이터 (토글 활성화 시에만 노출하여 응답 노이즈 차단)
+    if json_str and clean_markdown and show_json:
+        with st.expander("📄 원본 응답 JSON 데이터", expanded=True):
+            try:
+                st.json(json.loads(json_str))
+            except Exception:
+                st.code(json_str, language="json")
 
 
 # ==============================================================================
@@ -801,8 +872,8 @@ with tab_agent:
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
-    # 2. 상단 컨트롤 바 (모델/모드 뱃지 및 새 대화 버튼)
-    head_col1, head_col2 = st.columns([5, 1])
+    # 2. 상단 컨트롤 바 (모델/모드 뱃지, JSON 표시 토글 및 새 대화 버튼)
+    head_col1, head_col2, head_col3 = st.columns([4, 1.8, 1])
     with head_col1:
         is_live = bool(openai_key or settings.OPENAI_API_KEY) and not use_mock_mode
         badge_mode = (
@@ -821,6 +892,15 @@ with tab_agent:
         )
 
     with head_col2:
+        chat_show_json = st.toggle(
+            "📄 JSON 표시",
+            value=show_raw_json,
+            key="chat_show_json_toggle",
+            help="응답 메시지에 포함된 원본 JSON 데이터 표시 여부를 전환합니다 (기본: OFF로 노이즈 제거).",
+        )
+        effective_show_json = chat_show_json or show_raw_json
+
+    with head_col3:
         if st.button("➕ 새 대화", key="btn_new_chat", use_container_width=True, help="대화 기록을 비우고 초기 화면으로 돌아갑니다."):
             st.session_state.messages = []
             st.session_state.pop("pending_prompt", None)
@@ -882,7 +962,7 @@ with tab_agent:
             for msg in st.session_state.messages:
                 avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
                 with st.chat_message(msg["role"], avatar=avatar):
-                    _render_agent_message(msg)
+                    _render_agent_message(msg, show_json=effective_show_json)
                     if msg.get("tool_logs"):
                         with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
                             for log_entry in msg["tool_logs"]:
@@ -919,11 +999,14 @@ with tab_agent:
                             final_ans = f"[안내] 입력이 시스템 안전 가드레일 정책에 의해 차단되었습니다:\n- **사유**: {val_res.error_message}"
                             blocked_msg = {"role": "assistant", "content": final_ans, "tool_logs": current_tool_logs}
                             with response_placeholder.container():
-                                _render_agent_message(blocked_msg)
+                                _render_agent_message(blocked_msg, show_json=effective_show_json)
                             st.session_state.messages.append(blocked_msg)
                             break
 
                     if not is_blocked:
+                        # LangChain 도구 호출 및 시나리오 도구 콜백 핸들러 등록
+                        cb_handler = StreamlitToolCallbackHandler(status_box, current_tool_logs)
+
                         if use_mock_mode:
                             log_status(f"🎭 **Mock 모드 동작 중** (가상 모델: `{model_name}`): 가상 라우터 및 도구 호출 에뮬레이션")
                             time.sleep(0.3)
@@ -979,6 +1062,17 @@ with tab_agent:
                                 status_box.update(label=f"✅ 크로스 플랫폼 시나리오 완료 (도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
 
                                 kw = "러닝화" if "러닝화" in user_input else "트렌드 상품"
+                                # Mock 트렌드 도구 데이터 시뮬레이션 기록 (차트 시각화 연동)
+                                mock_trend_data = (
+                                    f"[{kw}]\n"
+                                    "  - 2026-01-01: 42.5\n"
+                                    "  - 2026-01-15: 55.0\n"
+                                    "  - 2026-02-01: 68.2\n"
+                                    "  - 2026-02-15: 82.4\n"
+                                    "  - 2026-03-01: 100.0\n"
+                                )
+                                cb_handler.record_tool_result("get_shopping_trends", mock_trend_data)
+
                                 final_ans = (
                                     f"### 📊 [{kw}] 크로스 플랫폼 트렌드 분석 종합 리포트\n\n"
                                     f"**분석 기간**: 2026-01-01 ~ 2026-03-01\n\n"
@@ -998,9 +1092,14 @@ with tab_agent:
                                 status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete", expanded=False)
                                 final_ans = f"'{user_input}'에 대한 일반 에이전트 응답입니다. (Mock 모드: 실제 질의 처리는 사이드바에 API 키를 입력해 주세요.)"
 
-                            mock_msg = {"role": "assistant", "content": final_ans, "tool_logs": current_tool_logs}
+                            mock_msg = {
+                                "role": "assistant",
+                                "content": final_ans,
+                                "tool_logs": current_tool_logs,
+                                "chart_tool_results": dict(cb_handler.tool_results),
+                            }
                             with response_placeholder.container():
-                                _render_agent_message(mock_msg)
+                                _render_agent_message(mock_msg, show_json=effective_show_json)
                             st.session_state.messages.append(mock_msg)
 
                         else:
@@ -1021,16 +1120,14 @@ with tab_agent:
                                 )
                                 log_status(f"🧠 **[에이전트 준비]** AgentRunner 초기화 완료 (모델: `{model_name}`)")
 
-                                # LangChain 도구 호출 콜백 핸들러 등록
-                                cb_handler = StreamlitToolCallbackHandler(status_box, current_tool_logs)
-
                                 final_ans = runner.run(
                                     user_input,
                                     callbacks=[cb_handler],
                                     on_status=log_status,
                                 )
-                                # 다음 시나리오 실행이 초기화하기 전에 원본 도구 결과를 복사해 둔다.
+                                # 도구 실행 콜백에서 수집된 결과 및 기존 시나리오 전역 변수(하위 호환) 병합
                                 chart_tool_results = dict(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
+                                chart_tool_results.update(cb_handler.tool_results)
                                 status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
                                 real_msg = {
                                     "role": "assistant",
@@ -1039,7 +1136,7 @@ with tab_agent:
                                     "chart_tool_results": chart_tool_results,
                                 }
                                 with response_placeholder.container():
-                                    _render_agent_message(real_msg)
+                                    _render_agent_message(real_msg, show_json=effective_show_json)
                                 st.session_state.messages.append(real_msg)
                             except Exception as e_run:
                                 status_box.update(label="❌ 실행 오류", state="error")
@@ -1232,6 +1329,21 @@ with tab_test:
                         mocked_injected_tools = {k: MockToolWrapper(k) for k in scenario.required_tool_names}
                         injected_tools = mocked_injected_tools
 
+                    # 도구 실행 결과 수집용 래핑 (차트 시각화 연동)
+                    scen_test_tool_results: Dict[str, str] = {}
+                    class RecordingToolWrapper:
+                        def __init__(self, inner, name):
+                            self._inner = inner
+                            self.name = name
+                        def invoke(self, *args, **kwargs):
+                            res = self._inner.invoke(*args, **kwargs)
+                            scen_test_tool_results[self.name] = str(res)
+                            return res
+                        def __call__(self, *args, **kwargs):
+                            return self.invoke(*args, **kwargs)
+
+                    injected_tools = {k: RecordingToolWrapper(t, k) for k, t in injected_tools.items()}
+
                     # 3. LLM 컨텍스트 구성
                     llm_instance = None
                     if enable_llm_report and openai_key:
@@ -1262,8 +1374,28 @@ with tab_test:
                         progress_bar.progress(100, text=f"완료! (소요 시간: {elapsed_scen:.2f}초)")
 
                         st.markdown("### 📊 최종 시나리오 분석 리포트")
-                        st.markdown(final_report)
-                        _render_trend_charts(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
+                        json_part, md_part = _extract_json_payload(final_report)
+                        if md_part:
+                            st.markdown(md_part)
+                        elif not json_part:
+                            st.markdown(final_report)
+                        else:
+                            with st.expander("📄 원본 시나리오 결과 JSON", expanded=True):
+                                try:
+                                    st.json(json.loads(json_part))
+                                except Exception:
+                                    st.code(json_part, language="json")
+
+                        if json_part and md_part and show_raw_json:
+                            with st.expander("📄 원본 시나리오 결과 JSON", expanded=True):
+                                try:
+                                    st.json(json.loads(json_part))
+                                except Exception:
+                                    st.code(json_part, language="json")
+
+                        combined_results = dict(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
+                        combined_results.update(scen_test_tool_results)
+                        _render_trend_charts(combined_results)
 
                     except Exception as e_scen:
                         progress_bar.empty()
@@ -1399,6 +1531,8 @@ with tab_test:
                                 st.json(output)
                             else:
                                 st.code(output, language="markdown")
+                                if isinstance(output, str) and raw_tool.name in _NAVER_TREND_TOOL_LABELS:
+                                    _render_trend_charts({raw_tool.name: output})
                         except Exception as e:
                             elapsed = time.time() - start_t
                             st.error(f"❌ 도구 실행 중 예외 발생 ({elapsed:.3f}초): {e}")

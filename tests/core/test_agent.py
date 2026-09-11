@@ -320,3 +320,154 @@ def test_agent_runner_scenario_tool_reporting_hook():
         # 도구 호출 시작 및 완료 이벤트 기록 확인
         assert any("greet" in ev for ev in status_events)
 
+
+def test_agent_runner_scenario_callbacks_tool_result_collection():
+    """시나리오 실행 중 호출되는 도구의 실행 결과가 callbacks 핸들러에 정상 기록되는지 검증."""
+    from pydantic import BaseModel
+    from src.core.scenario import BaseScenario
+    from src.core.scenario_registry import ScenarioRegistry
+
+    class MockParams(BaseModel):
+        q: str = ""
+
+    class MockReportScenario(BaseScenario):
+        @property
+        def name(self):
+            return "callback_test_scen"
+
+        @property
+        def description(self):
+            return "Callback Test Scenario"
+
+        @property
+        def parameters_schema(self):
+            return MockParams
+
+        @property
+        def required_tool_names(self):
+            return ["greet"]
+
+        def execute(self, params, tools, context=None):
+            return tools["greet"].invoke({"name": "CallbackTester"})
+
+    registry = ModuleRegistry()
+    registry.register(DummyModule())
+
+    scen_registry = ScenarioRegistry()
+    scen_registry.register(MockReportScenario())
+
+    runner = AgentRunner(
+        registry=registry,
+        llm=MagicMock(),
+        scenario_registry=scen_registry,
+    )
+
+    mock_plan = MagicMock()
+    mock_plan.scenario_name = "callback_test_scen"
+    mock_plan.confidence = 0.99
+    mock_plan.parameters = {"q": "test"}
+
+    class DummyCallback:
+        def __init__(self):
+            self.tool_results = {}
+
+        def record_tool_result(self, tool_name: str, result: str):
+            self.tool_results[tool_name] = result
+
+    cb = DummyCallback()
+    with patch.object(runner.router, "route", return_value=mock_plan):
+        result = runner.run("테스트", callbacks=[cb])
+
+        assert result == "Hello, CallbackTester!"
+        assert "greet" in cb.tool_results
+        assert cb.tool_results["greet"] == "Hello, CallbackTester!"
+
+
+def test_streamlit_tool_callback_handler():
+    """StreamlitToolCallbackHandler의 tool_results 수집 및 record_tool_result 동작 검증."""
+    from app import StreamlitToolCallbackHandler
+
+    mock_status = MagicMock()
+    log_store = []
+    handler = StreamlitToolCallbackHandler(mock_status, log_store)
+
+    # 1. on_tool_start -> on_tool_end
+    handler.on_tool_start({"name": "get_shopping_trends"}, "{'keywords': '러닝화'}")
+    assert handler._current_tool_name == "get_shopping_trends"
+
+    handler.on_tool_end("[러닝화]\n  - 2026-01-01: 50.0")
+    assert "get_shopping_trends" in handler.tool_results
+    assert "50.0" in handler.tool_results["get_shopping_trends"]
+
+    # 2. record_tool_result 직접 기록
+    handler.record_tool_result("custom_tool", "custom_result_value")
+    assert handler.tool_results["custom_tool"] == "custom_result_value"
+
+
+def test_extract_json_payload():
+    """응답 텍스트에서 ```json ... ``` 블록이 정상 분리되는지 검증."""
+    from app import _extract_json_payload
+
+    # 1. 앞에 JSON 블록이 있고 뒤에 마크다운이 있는 경우 (시나리오 표준)
+    sample_with_json = "```json\n{\n  \"status\": \"success\"\n}\n```\n\n### 📊 리포트 제목\n- 결과 내용입니다."
+    json_str, md_body = _extract_json_payload(sample_with_json)
+    assert json_str is not None
+    assert '"status": "success"' in json_str
+    assert md_body == "### 📊 리포트 제목\n- 결과 내용입니다."
+
+    # 2. JSON 블록이 없는 일반 마크다운/텍스트인 경우
+    sample_text = "일반적인 텍스트 응답입니다."
+    json_str2, md_body2 = _extract_json_payload(sample_text)
+    assert json_str2 is None
+    assert md_body2 == sample_text
+
+    # 3. 뒤에 JSON 블록이 있는 경우
+    sample_suffix_json = "### 마크다운 요약\n\n```json\n{\"id\": 123}\n```"
+    json_str3, md_body3 = _extract_json_payload(sample_suffix_json)
+    assert json_str3 is not None
+    assert '"id": 123' in json_str3
+    assert md_body3 == "### 마크다운 요약"
+
+
+def test_render_agent_message_show_json_toggle(monkeypatch):
+    """_render_agent_message가 show_json 토글 값에 따라 JSON expander 노출 여부를 올바르게 제어하는지 검증."""
+    import streamlit as st
+    from app import _render_agent_message
+
+    expander_calls = []
+
+    class MockExpanderContext:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    def mock_expander(label, expanded=False):
+        expander_calls.append((label, expanded))
+        return MockExpanderContext()
+
+    monkeypatch.setattr(st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(st, "expander", mock_expander)
+    monkeypatch.setattr(st, "json", lambda *args, **kwargs: None)
+    monkeypatch.setattr(st, "code", lambda *args, **kwargs: None)
+
+    msg_with_json = {
+        "role": "assistant",
+        "content": "```json\n{\"test\": 1}\n```\n\n### 분석 리포트 본문",
+    }
+
+    # 1. show_json=False (기본값): JSON expander를 렌더링하지 않아 노이즈 제거
+    expander_calls.clear()
+    _render_agent_message(msg_with_json, show_json=False)
+    assert len(expander_calls) == 0
+
+    # 2. show_json=True (토글 활성화): JSON expander가 렌더링됨
+    expander_calls.clear()
+    _render_agent_message(msg_with_json, show_json=True)
+    assert len(expander_calls) == 1
+    assert "JSON" in expander_calls[0][0]
+    assert expander_calls[0][1] is True
+
+
+
