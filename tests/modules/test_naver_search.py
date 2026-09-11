@@ -8,10 +8,9 @@
 import pytest
 import requests
 from unittest.mock import patch, MagicMock
-from src.modules.naver_search.module import NaverSearchModule
+from src.modules.naver_search.module import NaverSearchModule, NaverSearchContextProvider
 from src.modules.naver_search.tools import search_naver_blog, search_naver_news
 from src.modules.naver_search.guardrails import NaverSearchGuardrail
-from src.modules.naver_search.context import NaverSearchContextProvider
 from src.modules.naver_search.client import NaverSearchClient
 
 
