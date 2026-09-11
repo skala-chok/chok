@@ -5,12 +5,20 @@
 # ==============================================================================
 
 from typing import List
+
 from langchain_core.tools import BaseTool
-from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
+
 from src.config import settings
-from .tools import get_channel_stats, get_video_comments, get_video_metrics
-from .guardrails import YouTubeAnalyticsGuardrail
+from src.core.base import BaseAgentModule, BaseContextProvider, BaseGuardrail
+
 from .context import YouTubeAnalyticsContextProvider
+from .guardrails import YouTubeAnalyticsGuardrail
+from .tools import (
+    get_channel_stats,
+    get_video_comments,
+    get_video_metrics,
+    search_paid_promotion_videos,
+)
 
 
 class YouTubeAnalyticsModule(BaseAgentModule):
@@ -27,7 +35,12 @@ class YouTubeAnalyticsModule(BaseAgentModule):
 
     def get_tools(self) -> List[BaseTool]:
         # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
-        return [get_channel_stats, get_video_comments, get_video_metrics]
+        return [
+            get_channel_stats,
+            search_paid_promotion_videos,
+            get_video_metrics,
+            get_video_comments,
+        ]
 
     def get_guardrails(self) -> List[BaseGuardrail]:
         return [YouTubeAnalyticsGuardrail()]

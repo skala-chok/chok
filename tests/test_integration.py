@@ -39,14 +39,16 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert len(enabled) == 4
 
     runner = AgentRunner(registry=registry, llm=MagicMock())
-    # yt_search(2) + yt_analytics(2) + naver_search(2) + naver_shopping(7) = 13 tools
-    assert len(runner.tools) == 13
+    # yt_analytics 4개 + 나머지 모듈 각 2개 = 10개
+    assert len(runner.tools) == 10
 
     tool_names = {t.name for t in runner.tools}
     expected_tools = {
         "search_youtube_videos",
         "get_video_transcript",
         "get_channel_stats",
+        "search_paid_promotion_videos",
+        "get_video_metrics",
         "get_video_comments",
         "search_naver_blog",
         "search_naver_news",
@@ -81,7 +83,7 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     assert {m.name for m in enabled} == {"yt_search", "yt_analytics"}
 
     runner_yt = AgentRunner(registry=registry, llm=MagicMock())
-    assert len(runner_yt.tools) == 4
+    assert len(runner_yt.tools) == 6
 
     # 2. Only Naver API credentials provided
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
@@ -247,6 +249,7 @@ def test_agent_end_to_end_youtube_analytics_pii_masking_flow(monkeypatch):
             "items": [{
                 "snippet": {
                     "topLevelComment": {
+                        "id": "comment_test",
                         "snippet": {
                             "authorDisplayName": "HongGilDong",
                             "textDisplay": "연락처는 user@example.com 또는 010-1234-5678 입니다.",

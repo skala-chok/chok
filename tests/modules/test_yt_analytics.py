@@ -5,6 +5,7 @@
 # ==============================================================================
 
 import pytest
+import requests
 from unittest.mock import patch, MagicMock
 from src.modules.yt_analytics.module import YouTubeAnalyticsModule
 from src.modules.yt_analytics.tools import get_channel_stats, get_video_comments, get_video_metrics
@@ -13,12 +14,18 @@ from src.modules.yt_analytics.context import YouTubeAnalyticsContextProvider
 from src.modules.yt_analytics.client import YouTubeAnalyticsClient
 
 
+@pytest.fixture(autouse=True)
+def youtube_key(monkeypatch):
+    monkeypatch.setattr("src.modules.yt_analytics.client.settings.YOUTUBE_API_KEY", "dummy_key")
+
+
 def test_yt_analytics_module_metadata():
     mod = YouTubeAnalyticsModule()
     assert mod.name == "yt_analytics"
     assert "채널 통계" in mod.description or "YouTube" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 3
+    assert len(tools) == 4
+    assert {"search_paid_promotion_videos", "get_video_metrics"} <= {t.name for t in tools}
     tool_names = [t.name for t in tools]
     assert "get_channel_stats" in tool_names
     assert "get_video_comments" in tool_names
@@ -107,6 +114,15 @@ def test_yt_analytics_guardrail_pii_masking():
     assert guard.sanitize_output("get_video_comments", dict_output) == dict_output
 
 
+def test_channel_stats_sanitization_keeps_existing_contract():
+    guard = YouTubeAnalyticsGuardrail()
+    raw = "<b>채널</b> test@example.com 010-1234-5678"
+
+    assert guard.sanitize_output("get_channel_stats", raw) == (
+        "<b>채널</b> [EMAIL_MASKED] [PHONE_MASKED]"
+    )
+
+
 @patch("src.modules.yt_analytics.client.requests.get")
 def test_get_channel_stats_mock(mock_get):
     mock_get.return_value.status_code = 200
@@ -151,6 +167,7 @@ def test_get_video_comments_mock(mock_get):
             {
                 "snippet": {
                     "topLevelComment": {
+                        "id": "comment_test",
                         "snippet": {
                             "authorDisplayName": "홍길동",
                             "textDisplay": "정말 유익한 영상입니다!",
@@ -161,6 +178,7 @@ def test_get_video_comments_mock(mock_get):
             {
                 "snippet": {
                     "topLevelComment": {
+                        "id": "comment_test",
                         "snippet": {
                             "authorDisplayName": "김철수",
                             "textDisplay": "설명이 깔끔하네요.",
@@ -171,8 +189,9 @@ def test_get_video_comments_mock(mock_get):
         ]
     }
     res = get_video_comments.invoke({"video_id": "vid123", "max_comments": 2})
-    assert "홍길동: 정말 유익한 영상입니다!" in res
-    assert "김철수: 설명이 깔끔하네요." in res
+    assert res["comments"][0]["author"] == "홍길동"
+    assert res["comments"][0]["text"] == "정말 유익한 영상입니다!"
+    assert res["comments"][1]["text"] == "설명이 깔끔하네요."
 
 
 @patch("src.modules.yt_analytics.client.requests.get")
@@ -180,14 +199,16 @@ def test_get_video_comments_no_items(mock_get):
     mock_get.return_value.status_code = 200
     mock_get.return_value.json.return_value = {"items": []}
     res = get_video_comments.invoke({"video_id": "vid_empty", "max_comments": 10})
-    assert "댓글이 없거나 조회할 수 없습니다" in res
+    assert res["comments"] == []
+    assert "error" not in res
 
 
 @patch("src.modules.yt_analytics.client.requests.get")
 def test_get_video_comments_error_handling(mock_get):
-    mock_get.side_effect = RuntimeError("Network error")
+    mock_get.side_effect = requests.exceptions.RequestException("Network error")
     res = get_video_comments.invoke({"video_id": "vid123"})
-    assert "댓글 수집 실패: Network error" in res
+    assert res["error_code"] == "networkError"
+    assert "Network error" not in res["error"]
 
 
 @patch("src.modules.yt_analytics.client.requests.get")
@@ -230,6 +251,8 @@ def test_client_get_comments_params(mock_get, monkeypatch):
             "part": "snippet",
             "videoId": "vid_test",
             "maxResults": 15,
+            "order": "relevance",
+            "textFormat": "plainText",
             "key": "analytics_key",
         },
         timeout=5,

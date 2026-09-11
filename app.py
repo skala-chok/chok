@@ -106,7 +106,7 @@ mod_registry, scen_registry = get_system_registries()
 # ==============================================================================
 # 🛠️ 3. Mock 도구 구현 (API 키가 없거나 모의 모드일 때 안전하게 테스트)
 # ==============================================================================
-def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> str:
+def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> Any:
     """외부 API 키 없이도 전체 파이프라인과 UI를 검증할 수 있는 Mock 결과 생성기."""
     time.sleep(0.3)  # 실제 네트워크 지연 시뮬레이션
     if "search_youtube" in tool_name:
@@ -126,11 +126,43 @@ def execute_mock_tool(tool_name: str, args: Dict[str, Any]) -> str:
         return f"[Mock 채널 통계 ({cid})]\n- 구독자 수: 254,000명\n- 총 조회수: 48,200,100회\n- 업로드 영상 수: 312개"
     elif "get_video_comments" in tool_name:
         vid = args.get("video_id", "vid_001")
+        order = args.get("order", "relevance")
+        comments = [
+            {
+                "comment_id": "mock_comment_001",
+                "text": "가격 대비 퀄리티가 정말 좋네요! 바로 구매했습니다.",
+                "author": "트렌드매니아",
+                "like_count": 12,
+                "published_at": "2026-09-10T12:00:00Z",
+                "updated_at": "2026-09-10T12:00:00Z",
+                "reply_count": 1,
+            },
+            {
+                "comment_id": "mock_comment_002",
+                "text": "쿠셔닝은 좋은데 발볼이 조금 좁게 나왔습니다.",
+                "author": "러너2026",
+                "like_count": 7,
+                "published_at": "2026-09-09T12:00:00Z",
+                "updated_at": "2026-09-09T12:00:00Z",
+                "reply_count": 0,
+            },
+        ]
+        return {
+            "video_id": vid,
+            "comment_count_returned": len(comments),
+            "order": order,
+            "comments": comments,
+            "analysis_note": (
+                "수집된 공개 댓글 기준이며 전체 고객/시청자를 대표하지 않습니다. "
+                "원문과 LLM의 해석을 구분하세요."
+            ),
+        }
+    elif "search_naver_shopping" in tool_name:
+        q = args.get("query", "상품")
         return (
-            f"💬 [Mock 댓글 반응 ({vid})]\n"
-            f"- 트렌드매니아: 가격 대비 퀄리티가 정말 좋네요! 바로 구매했습니다.\n"
-            f"- 러너2026: 쿠셔닝은 좋은데 발볼이 조금 좁게 나왔으니 반업 추천합니다.\n"
-            f"- 쇼퍼홀릭: 지난 버전보다 훨씬 가볍고 일상용으로도 훌륭합니다."
+            f"🛍️ [Mock 네이버 쇼핑 검색 결과 - '{q}']\n"
+            f"- 상품명: 2026 베스트 {q} 프로 울트라\n  최저가: 129,000원\n  쇼핑몰: 공식브랜드스토어\n  링크: https://smartstore.naver.com/mock1\n\n"
+            f"- 상품명: 컴포트 에어 {q} 데일리 에디션\n  최저가: 89,000원\n  쇼핑몰: 트렌드샵\n  링크: https://smartstore.naver.com/mock2"
         )
     elif "get_shopping_trends" in tool_name:
         kws = args.get("keywords", "키워드")
@@ -374,7 +406,10 @@ with tab_tool:
 
                         elapsed = time.time() - start_t
                         st.success(f"✅ 실행 성공 (소요 시간: {elapsed:.3f}초)")
-                        st.code(output, language="markdown")
+                        if isinstance(output, (dict, list)):
+                            st.json(output)
+                        else:
+                            st.code(output, language="markdown")
                     except Exception as e:
                         elapsed = time.time() - start_t
                         st.error(f"❌ 도구 실행 중 예외 발생 ({elapsed:.3f}초): {e}")
