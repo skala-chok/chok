@@ -218,3 +218,105 @@ def test_main_cli_setup_logging_level():
                 with patch("src.main.setup_logging") as mock_setup:
                     src.main.main()
                     mock_setup.assert_called_once_with("DEBUG")
+
+
+def test_agent_runner_callbacks_and_status_hook():
+    """AgentRunner.run 실행 시 callbacks 및 on_status 훅이 올바르게 전달되는지 검증."""
+    from src.core.scenario_registry import ScenarioRegistry
+
+    registry = ModuleRegistry()
+    registry.register(DummyModule())
+
+    llm = FakeChatWithTools(responses=["Agent answered!"])
+    runner = AgentRunner(
+        registry=registry,
+        llm=llm,
+        scenario_registry=ScenarioRegistry(),  # 빈 레지스트리로 일반 에이전트 강제
+    )
+
+    mock_cb = MagicMock()
+    status_events = []
+
+    def on_status(msg: str):
+        status_events.append(msg)
+
+    try:
+        from langchain_classic.agents import AgentExecutor
+    except ImportError:
+        from langchain.agents import AgentExecutor
+
+    with patch.object(AgentExecutor, "invoke", side_effect=lambda self, *args, **kwargs: {"output": "Agent answered!"}) as mock_invoke:
+        result = runner.run("안녕하세요", callbacks=[mock_cb], on_status=on_status)
+
+        assert result == "Agent answered!"
+        mock_invoke.assert_called_once()
+        # config에 callbacks가 전달되었는지 확인
+        call_kwargs = mock_invoke.call_args[1]
+        assert "config" in call_kwargs
+        assert mock_cb in call_kwargs["config"].get("callbacks", [])
+        # on_status에 일반 에이전트 시작 이벤트가 기록되었는지 확인
+        assert any("일반 에이전트" in ev for ev in status_events)
+
+
+def test_agent_runner_scenario_tool_reporting_hook():
+    """시나리오 실행 시 주입된 도구 호출이 on_status 훅을 통해 실시간 로깅되는지 검증."""
+    from pydantic import BaseModel, Field
+    from src.core.scenario import BaseScenario
+    from src.core.scenario_registry import ScenarioRegistry
+
+    class MockParams(BaseModel):
+        q: str = Field(default="test")
+
+    class MockReportScenario(BaseScenario):
+        @property
+        def name(self):
+            return "mock_report_scen"
+
+        @property
+        def description(self):
+            return "Mock Reporting Scenario"
+
+        @property
+        def parameters_schema(self):
+            return MockParams
+
+        @property
+        def required_tool_names(self):
+            return ["greet"]
+
+        def execute(self, params, tools, context=None):
+            # 도구 호출
+            tool_res = tools["greet"].invoke({"name": "World"})
+            return f"Scenario Result: {tool_res}"
+
+    registry = ModuleRegistry()
+    registry.register(DummyModule())
+
+    scen_registry = ScenarioRegistry()
+    scen_registry.register(MockReportScenario())
+
+    runner = AgentRunner(
+        registry=registry,
+        llm=MagicMock(),
+        scenario_registry=scen_registry,
+    )
+
+    # Router mock
+    mock_plan = MagicMock()
+    mock_plan.scenario_name = "mock_report_scen"
+    mock_plan.confidence = 0.95
+    mock_plan.parameters = {"q": "test"}
+
+    status_events = []
+    def on_status(msg: str):
+        status_events.append(msg)
+
+    with patch.object(runner.router, "route", return_value=mock_plan):
+        result = runner.run("테스트", on_status=on_status)
+
+        assert "Scenario Result: Hello, World!" in result
+        # 시나리오 라우팅 이벤트 기록 확인
+        assert any("mock_report_scen" in ev for ev in status_events)
+        # 도구 호출 시작 및 완료 이벤트 기록 확인
+        assert any("greet" in ev for ev in status_events)
+

@@ -58,11 +58,12 @@ class NaverShoppingClient:
         }
 
     def get_datalab_trend(self, keywords: List[str], start_date: str, end_date: str) -> Dict[str, Any]:
+        # 검색어 트렌드 API는 keywordGroups를 최대 5개까지만 허용한다.
         body = {
             "startDate": start_date,
             "endDate": end_date,
             "timeUnit": "month",
-            "keywordGroups": [{"groupName": kw, "keywords": [kw]} for kw in keywords],
+            "keywordGroups": [{"groupName": kw, "keywords": [kw]} for kw in keywords[:5]],
         }
         try:
             resp = requests.post(self.DATALAB_URL, headers=self.headers, json=body, timeout=5)
