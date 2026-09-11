@@ -60,6 +60,9 @@
    - `tools.py` 또는 `client.py`에서 적절한 예외 처리(`try-except`)를 수행하고, LLM이 이해할 수 있는 명확한 에러 문자열(예: `"검색 API 호출 중 오류가 발생했습니다: ..."` )을 반환하여 모델이 대안을 찾을 수 있도록 해야 합니다.
 2. **타임아웃(Timeout) 필수 지정**:
    - `requests.get()` 또는 외부 HTTP 통신 시 반드시 `timeout` 파라미터(예: `timeout=5`)를 명시하여 스레드가 무한 대기하는 현상을 방지해야 합니다.
+3. **OpenAPI 장애 시 폴백 목(Fallback Mock) 데이터 제공 원칙**:
+   - 외부 OpenAPI(Naver, YouTube 등) 호출 실패 시 빈 값이나 단순 예외로 크래시를 유발하지 않고, 사전에 정의된 표준 스키마의 **폴백 목 데이터(Fallback Mock Data)**를 반환하여 에이전트 및 파이프라인의 비즈니스 연속성을 보장해야 합니다.
+   - 세부 구현 규격 및 하네스 테스트 검증 가이드는 [`04_testing_harness.md`](./04_testing_harness.md)의 3.3절을 필수로 준수해야 합니다.
 
 ---
 

@@ -101,6 +101,85 @@ def test_agent_tool_calling_flow(monkeypatch):
 
 ---
 
+### 3.3 OpenAPI 장애 대응 폴백 목(Fallback Mock) 데이터 하네스 룰
+
+외부 OpenAPI(Naver Search/Shopping, YouTube Data API 등)는 네트워크 불안정, 타임아웃, 일일 쿼터(Quota) 초과, 비인가 키 오류 등 다양한 외부 요인으로 실패할 수 있습니다.
+에이전트 시스템 및 테스트 하네스가 외란에 의해 중단(Crash)되지 않도록, **"OpenAPI 호출 실패 시 표준 스키마의 폴백 목(Fallback Mock) 데이터를 반환하고 이를 하네스로 검증한다"**는 하네스 룰을 필수로 준수해야 합니다.
+
+#### 📌 하네스 룰 핵심 요건
+1. **Graceful Degradation (우아한 기능 저하)**:
+   - 외부 OpenAPI 통신 시 예외(`requests.exceptions.RequestException`, `HTTPError`, `Timeout` 등)가 발생하면 프로세스를 중단시키지 않고 포착(`try-except`)합니다.
+   - 실패 원인을 경고 로그(`logger.warning`)로 명확히 기록한 후, 사전에 정의된 **표준 폴백 목 데이터**를 반환합니다.
+2. **표준 응답 스키마(Data Contract) 준수**:
+   - 폴백 목 데이터는 정상 OpenAPI 응답과 동일한 딕셔너리 키 및 데이터 타입을 유지해야 합니다.
+   - 다운스트림(가드레일 `sanitize_output`, LLM ReAct 루프, 시나리오 분석 체인)에서 `KeyError`나 파싱 에러가 발생하지 않도록 방지합니다.
+   - 목 데이터 항목 내에 `[Fallback Mock]` 또는 `(오프라인 목 데이터)` 표식을 부여하여, LLM 및 사용자가 해당 데이터가 폴백 결과임을 명확히 인지할 수 있도록 합니다.
+3. **하네스 테스트 검증 필수화**:
+   - 모든 OpenAPI 클라이언트 및 도구는 **"OpenAPI 실패 시 폴백 목 데이터 반환"** 시나리오를 검증하는 단위 테스트를 반드시 포함해야 합니다.
+   - `unittest.mock.patch`의 `side_effect`에 예외를 주입하여 회귀 테스트를 수행합니다.
+
+#### 💻 구현 예시 (클라이언트 계층)
+```python
+import logging
+import requests
+from typing import Any, Dict
+
+logger = logging.getLogger(__name__)
+
+class NaverSearchClient:
+    # ...
+    def _get_fallback_blog_data(self, query: str) -> Dict[str, Any]:
+        """OpenAPI 실패 시 반환할 표준 스키마의 폴백 목 데이터."""
+        return {
+            "total": 1,
+            "start": 1,
+            "display": 1,
+            "items": [
+                {
+                    "title": f"[Fallback Mock] {query} 관련 오프라인 검색 결과",
+                    "link": "https://openapi.naver.com/fallback",
+                    "description": "외부 OpenAPI 통신 장애로 인해 제공된 기본 폴백 목 데이터입니다.",
+                    "bloggername": "System Fallback",
+                    "bloggerlink": "https://openapi.naver.com",
+                    "postdate": "20260911",
+                }
+            ],
+        }
+
+    def search_blog(self, query: str, display: int = 5, sort: str = "sim") -> Dict[str, Any]:
+        url = f"{self.BASE_URL}/blog.json"
+        params = {"query": query, "display": display, "sort": sort}
+        try:
+            resp = requests.get(url, headers=self.headers, params=params, timeout=5)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("OpenAPI 호출 실패, 폴백 목 데이터를 반환합니다: %s", e)
+            return self._get_fallback_blog_data(query)
+```
+
+#### 🧪 하네스 테스트 작성 예시
+```python
+from unittest.mock import patch
+import requests
+
+def test_naver_blog_search_openapi_failure_fallback():
+    """OpenAPI 네트워크 오류 또는 500 에러 발생 시 폴백 목 데이터가 반환되는지 검증."""
+    with patch("src.modules.naver_search.client.requests.get") as mock_get:
+        # 외부 OpenAPI 실패 시뮬레이션
+        mock_get.side_effect = requests.exceptions.ConnectionError("Network unreachable")
+
+        client = NaverSearchClient()
+        result = client.search_blog("AI 트렌드")
+
+        # 폴백 목 데이터 스키마 및 식별자 검증
+        assert "items" in result
+        assert len(result["items"]) >= 1
+        assert "[Fallback Mock]" in result["items"][0]["title"]
+```
+
+---
+
 ## 🏃 4. 테스트 실행 명령어 가이드
 
 ```bash

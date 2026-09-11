@@ -13,7 +13,7 @@
 | **01** | [**🎨 코드 스타일 가이드 (`01_code_style.md`)**](./01_code_style.md) | • Python 3.10+ PEP 8 스타일<br>• 클래스/함수/도구 명명 규칙<br>• 엄격한 Type Hinting & Docstring 표준<br>• 모듈 임포트 순서 및 린트 도구 | 전체 개발자 |
 | **02** | [**🏛️ 현재 아키텍처 구조 (`02_architecture.md`)**](./02_architecture.md) | • 시스템 전체 계층 구조 (CLI $\rightarrow$ Core $\rightarrow$ Worker $\rightarrow$ API)<br>• 4대 컴포넌트(Client, Tools, Guardrails, Context)<br>• 지능형 시나리오 라우팅 & ReAct 폴백 메커니즘<br>• 엔드투엔드 요청 처리 시퀀스 다이어그램 | 아키텍트 / 코어 개발자 |
 | **03** | [**📜 작성 준수 사항 (`03_guidelines.md`)**](./03_guidelines.md) | • **모듈 간 무의존성 원칙** (Zero Cross-Module Dependency)<br>• 3단계 가드레일 구현 필수 규칙<br>• API 키 보안 및 Graceful Degradation<br>• 예외 처리 및 에러 복원력 가이드라인 | 전체 개발자 |
-| **04** | [**🧪 테스트 및 하네스 엔지니어링 (`04_testing_harness.md`)**](./04_testing_harness.md) | • **100% Mocking 원칙** (비용 제로, 초고속 검증)<br>• `ToolCallingFakeChat` 에이전트 평가 하네스<br>• 단위/통합 테스트 스위트 운용 및 회귀 방지 | 하네스 / QA 엔지니어 |
+| **04** | [**🧪 테스트 및 하네스 엔지니어링 (`04_testing_harness.md`)**](./04_testing_harness.md) | • **100% Mocking 원칙** (비용 제로, 초고속 검증)<br>• **OpenAPI 실패 대응 폴백 목 데이터 룰**<br>• `ToolCallingFakeChat` 에이전트 평가 하네스<br>• 단위/통합 테스트 스위트 운용 및 회귀 방지 | 하네스 / QA 엔지니어 |
 | **05** | [**🚀 신규 모듈/시나리오 확장 가이드 (`05_extension_guide.md`)**](./05_extension_guide.md) | • 5단계 레인보우 로드맵 (🔴 Red $\rightarrow$ 🔵 Blue)<br>• 신규 외부 API Worker 모듈 추가 방법<br>• 신규 전문 시나리오(Scenario) 체이닝 구현 절차 | 기능 개발자 |
 | **06** | [**🛠️ 트러블슈팅 및 운영 가이드 (`06_troubleshooting.md`)**](./06_troubleshooting.md) | • 모듈 비활성화 / 가드레일 인자 차단 대응<br>• 라우터 스키마 파싱 예외 해결법<br>• 디버그 로깅 및 관찰성(Observability) 확보 | 운영자 / 전체 개발자 |
 
