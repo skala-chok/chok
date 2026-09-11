@@ -243,8 +243,11 @@ class TestAgentRunnerWithScenario:
 class TestCrossPlatformTrendScenario:
     def test_cross_platform_trend_execution_flow(self):
         scenario = CrossPlatformTrendScenario()
+        assert "search_hashtag_id" in scenario.required_tool_names
+        assert "get_hashtag_top_media" in scenario.required_tool_names
+
         params = CrossPlatformTrendParams(
-            keyword="러닝화",
+            keyword="#러닝화",
             start_date="2026-01-01",
             end_date="2026-02-01",
         )
@@ -255,9 +258,17 @@ class TestCrossPlatformTrendScenario:
         mock_yt_tool = MagicMock()
         mock_yt_tool.invoke.return_value = "유튜브영상: 러닝화 추천 Top 3"
 
+        mock_ig_search = MagicMock()
+        mock_ig_search.invoke.return_value = "• 해시태그 ID: 17841400000000001"
+
+        mock_ig_top = MagicMock()
+        mock_ig_top.invoke.return_value = "인스타그램 인기 게시물: #러닝화 참여도 150.0"
+
         tools = {
             "get_shopping_trends": mock_trend_tool,
             "search_youtube_videos": mock_yt_tool,
+            "search_hashtag_id": mock_ig_search,
+            "get_hashtag_top_media": mock_ig_top,
         }
 
         mock_llm = MagicMock()
@@ -272,3 +283,39 @@ class TestCrossPlatformTrendScenario:
             assert result == "종합 크로스 분석 리포트 내용"
             mock_trend_tool.invoke.assert_called_once()
             mock_yt_tool.invoke.assert_called_once()
+            mock_ig_search.invoke.assert_called_once_with({"query": "러닝화"})
+            mock_ig_top.invoke.assert_called_once_with({"hashtag_id": "17841400000000001"})
+
+    def test_cross_platform_trend_fallback_formatting(self):
+        scenario = CrossPlatformTrendScenario()
+        params = CrossPlatformTrendParams(
+            keyword="러닝화",
+            start_date="2026-01-01",
+            end_date="2026-02-01",
+        )
+
+        mock_trend_tool = MagicMock()
+        mock_trend_tool.invoke.return_value = "쇼핑트렌드 데이터"
+
+        mock_yt_tool = MagicMock()
+        mock_yt_tool.invoke.return_value = "유튜브 데이터"
+
+        mock_ig_search = MagicMock()
+        mock_ig_search.invoke.return_value = "• 해시태그 ID: 17841400000000001"
+
+        mock_ig_top = MagicMock()
+        mock_ig_top.invoke.return_value = "인스타그램 인기 게시물 데이터"
+
+        tools = {
+            "get_shopping_trends": mock_trend_tool,
+            "search_youtube_videos": mock_yt_tool,
+            "search_hashtag_id": mock_ig_search,
+            "get_hashtag_top_media": mock_ig_top,
+        }
+
+        result = scenario.execute(params, tools, context={})
+        assert "#### 1. 네이버 쇼핑 트렌드" in result
+        assert "#### 2. 유튜브 관련 영상" in result
+        assert "#### 3. 인스타그램 해시태그 반응" in result
+        assert "인스타그램 인기 게시물 데이터" in result
+
