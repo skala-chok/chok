@@ -59,7 +59,7 @@ def test_base_agent_module_abstract():
 def test_custom_module_implementation():
     @tool
     def sample_tool(query: str) -> str:
-        """Sample tool for testing"""
+        """테스트용 샘플 도구."""
         return f"result: {query}"
 
     class CustomGuardrail(BaseGuardrail):

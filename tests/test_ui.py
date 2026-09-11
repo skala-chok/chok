@@ -11,7 +11,7 @@ def test_streamlit_tool_callback_handler():
     log_store = []
     handler = StreamlitToolCallbackHandler(mock_status, log_store)
 
-    # 1. on_tool_start -> on_tool_end
+    # 1. 도구 시작 및 완료 이벤트 수집 (on_tool_start -> on_tool_end)
     handler.on_tool_start({"name": "get_shopping_trends"}, "{'keywords': '러닝화'}")
     assert handler._current_tool_name == "get_shopping_trends"
 

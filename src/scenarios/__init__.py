@@ -1,1 +1,1 @@
-# Scenarios package root
+# 전문 비즈니스 시나리오 패키지 루트

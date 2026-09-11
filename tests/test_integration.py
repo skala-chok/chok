@@ -39,7 +39,7 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     assert len(enabled) == 5
 
     runner = AgentRunner(registry=registry, llm=MagicMock())
-    # yt_search(4) + yt_analytics(4) + naver_search(2) + naver_shopping(8) + instagram(4) = 22 tools
+    # 5개 도메인 모듈 합산 22개 도구 통합 검증: yt_search(4) + yt_analytics(4) + naver_search(2) + naver_shopping(8) + instagram(4) = 22개 도구
     assert len(runner.tools) == 22
 
     tool_names = {t.name for t in runner.tools}
@@ -69,7 +69,7 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
     }
     assert tool_names == expected_tools
 
-    # System prompt snippets from all modules
+    # 모든 활성화 모듈의 시스템 프롬프트 조각 통합 검증
     assert "YouTube 동영상 검색 및 자막 추출 가이드" in runner.system_prompt_text
     assert "YouTube 채널 통계 및 시청자 댓글 분석 가이드" in runner.system_prompt_text
     assert "네이버 블로그 및 뉴스 검색 가이드" in runner.system_prompt_text
@@ -79,7 +79,7 @@ def test_agent_runner_initialization_with_all_modules(monkeypatch):
 
 def test_graceful_degradation_with_partial_keys(monkeypatch):
     """일부 API 키만 설정되었을 때 가용 모듈만 안전하게 활성화되는지 검증 (Graceful Degradation)."""
-    # 1. Only YouTube API key provided
+    # 1. YouTube API 키만 제공된 경우 (워커 1, 2 활성화)
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", "mock_yt_key")
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", None)
@@ -95,7 +95,7 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     runner_yt = AgentRunner(registry=registry, llm=MagicMock())
     assert len(runner_yt.tools) == 8
 
-    # 2. Only Naver API credentials provided
+    # 2. 네이버 API 인증 정보만 제공된 경우 (워커 3, 4 활성화)
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", "mock_id")
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", "mock_sec")
@@ -109,10 +109,10 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     assert {m.name for m in enabled_naver} == {"naver_search", "naver_shopping"}
 
     runner_naver = AgentRunner(registry=registry_naver, llm=MagicMock())
-    # naver_search(2) + naver_shopping(8) = 10 tools
+    # 네이버 도구 10개 검증: naver_search(2) + naver_shopping(8) = 10개
     assert len(runner_naver.tools) == 10
 
-    # 3. Only Instagram API credentials provided
+    # 3. 인스타그램 API 인증 정보만 제공된 경우 (워커 5 활성화)
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", None)
@@ -128,7 +128,7 @@ def test_graceful_degradation_with_partial_keys(monkeypatch):
     runner_ig = AgentRunner(registry=registry_ig, llm=MagicMock())
     assert len(runner_ig.tools) == 4
 
-    # 4. No API keys provided
+    # 4. API 키가 전혀 제공되지 않은 경우 (모든 모듈 비활성화)
     monkeypatch.setattr(settings, "YOUTUBE_API_KEY", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_ID", None)
     monkeypatch.setattr(settings, "NAVER_CLIENT_SECRET", None)
@@ -174,7 +174,7 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     runner = AgentRunner(registry=registry, llm=MagicMock())
     tools_map = {t.name: t for t in runner.tools}
 
-    # Worker 1: get_channel_videos (max_results > 50)
+    # 워커 1: get_channel_videos (max_results > 50 초과 차단 검증)
     yt_search_res = tools_map["get_channel_videos"].invoke({
         "channel_id": "UC123", "published_after": "2026-01-01T00:00:00Z",
         "max_results": 100,
@@ -182,32 +182,32 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     assert "[가드레일 검증 실패]" in yt_search_res
     assert "max_results는 최소 1개, 최대 50개까지 가능합니다." in yt_search_res
 
-    # Worker 1: get_channel_details (empty channel_id)
+    # 워커 1: get_channel_details (빈 channel_id 차단 검증)
     yt_details_res = tools_map["get_channel_details"].invoke({"channel_id": ""})
     assert "[가드레일 검증 실패]" in yt_details_res
     assert "channel_id가 누락되었습니다." in yt_details_res
 
-    # Worker 2: get_channel_stats (empty channel_id)
+    # 워커 2: get_channel_stats (빈 channel_id 차단 검증)
     yt_channel_res = tools_map["get_channel_stats"].invoke({"channel_id": ""})
     assert "[가드레일 검증 실패]" in yt_channel_res
     assert "channel_id가 누락되었습니다." in yt_channel_res
 
-    # Worker 2: get_video_comments (max_comments > 50)
+    # 워커 2: get_video_comments (max_comments > 50 초과 차단 검증)
     yt_comments_res = tools_map["get_video_comments"].invoke({"video_id": "vid123", "max_comments": 100})
     assert "[가드레일 검증 실패]" in yt_comments_res
     assert "max_comments는 1 이상 50 이하여야 합니다." in yt_comments_res
 
-    # Worker 3: search_naver_blog (display > 10)
+    # 워커 3: search_naver_blog (display > 10 초과 차단 검증)
     naver_blog_res = tools_map["search_naver_blog"].invoke({"query": "test", "display": 15})
     assert "[가드레일 검증 실패]" in naver_blog_res
     assert "display 파라미터는 1 이상 10 이하여야 합니다." in naver_blog_res
 
-    # Worker 3: search_naver_news (invalid sort)
+    # 워커 3: search_naver_news (유효하지 않은 sort 차단 검증)
     naver_news_res = tools_map["search_naver_news"].invoke({"query": "test", "sort": "invalid"})
     assert "[가드레일 검증 실패]" in naver_news_res
     assert "sort 옵션은 'sim' 또는 'date'만 가능합니다." in naver_news_res
 
-    # Worker 4: get_shopping_trends (invalid date format)
+    # 워커 4: get_shopping_trends (잘못된 날짜 형식 차단 검증)
     naver_trend_res = tools_map["get_shopping_trends"].invoke({
         "keywords": "노트북",
         "start_date": "2026/01/01",
@@ -216,7 +216,7 @@ def test_tool_argument_guardrails_across_all_modules(monkeypatch):
     assert "[가드레일 검증 실패]" in naver_trend_res
     assert "날짜는 YYYY-MM-DD 형식이어야 합니다." in naver_trend_res
 
-    # Worker 5: search_hashtag_id (empty query)
+    # 워커 5: search_hashtag_id (빈 검색어 차단 검증)
     ig_res = tools_map["search_hashtag_id"].invoke({"query": "   "})
     assert "[가드레일 검증 실패]" in ig_res
     assert "검색할 해시태그 키워드가 비어 있습니다." in ig_res
@@ -370,7 +370,7 @@ def test_agent_end_to_end_cross_platform_trend_scenario_routing(monkeypatch):
          patch("src.modules.yt_search.client.requests.get") as mock_yt_get, \
          patch("src.modules.instagram.client.requests.get") as mock_ig_get:
 
-        # 1. Naver shopping trend response
+        # 1. 네이버 쇼핑 트렌드 응답 모킹
         mock_post.return_value.status_code = 200
         mock_post.return_value.json.return_value = {
             "startDate": "2026-01-01",
@@ -383,7 +383,7 @@ def test_agent_end_to_end_cross_platform_trend_scenario_routing(monkeypatch):
             }],
         }
 
-        # 2. YouTube search response
+        # 2. YouTube 검색 응답 모킹
         mock_yt_get.return_value.status_code = 200
         mock_yt_get.return_value.json.return_value = {
             "items": [{
@@ -396,7 +396,7 @@ def test_agent_end_to_end_cross_platform_trend_scenario_routing(monkeypatch):
             }],
         }
 
-        # 3. Instagram response (search_hashtag_id then get_hashtag_top_media)
+        # 3. 인스타그램 응답 모킹 (search_hashtag_id 후 get_hashtag_top_media 연동)
         def fake_ig_get(url, params=None, **kwargs):
             res = MagicMock()
             res.status_code = 200

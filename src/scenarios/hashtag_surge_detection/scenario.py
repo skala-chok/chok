@@ -208,7 +208,7 @@ class HashtagSurgeDetectionScenario(BaseScenario):
             norm_query = self._normalize_tag(raw_tag)
             normalization_mappings[raw_tag] = f"q={norm_query}"
 
-            # Step 1: ID 검색
+            # 1단계: 해시태그 ID 검색
             ht_id = None
             if search_tool:
                 try:
@@ -220,7 +220,7 @@ class HashtagSurgeDetectionScenario(BaseScenario):
             if not ht_id:
                 ht_id = f"fallback_ht_{norm_query}"
 
-            # Step 2: 최신글 조회 (recent_media = 현재 시간대 온도)
+            # 2단계: 최신글 조회 (recent_media = 현재 시간대 유입 반응)
             recent_count = 0
             recent_avg = 0.0
             if recent_tool:
@@ -236,7 +236,7 @@ class HashtagSurgeDetectionScenario(BaseScenario):
                 recent_count = r_stats["count"]
                 recent_avg = r_stats["avg_engagement"]
 
-            # Step 3: 누적 인기글 조회 (top_media = 비교 기준선 baseline)
+            # 3단계: 누적 인기글 조회 (top_media = 비교 기준선 Baseline)
             top_count = 0
             top_avg = 0.0
             if top_tool:
@@ -294,7 +294,7 @@ class HashtagSurgeDetectionScenario(BaseScenario):
             surging_candidates.sort(key=lambda x: x.surge_ratio, reverse=True)
             surging_tag = f"#{surging_candidates[0].normalized_query}"
 
-        # 필수 준수 Disclaimers
+        # 필수 준수 고지사항 (Disclaimers)
         disclaimers = [
             f"Instagram Graph API는 recent_media에 대해 최근 24시간 이내 게시물만 제공하므로, '최근 한 달 상승세' 등 기간별 시계열 추이 데이터는 제공되지 않음을 명시합니다. (현재 적용: 최근 {capped_hours}시간)",
             f"지역 해시태그는 최근 {capped_hours}시간 내 게시물 표본 수가 적을 수 있으며, 표본 부족 시 급상승 여부를 단정하지 않습니다.",

@@ -186,7 +186,7 @@ def _handle_response(resp: requests.Response, platform: str = "Unknown", endpoin
 
 
 # ==============================================================================
-# 1. API Clients (Self-Contained Implementation for Testing)
+# 1. API 클라이언트 계층 (진단 및 테스트를 위한 자체 완비 구현체)
 # ==============================================================================
 
 class InstagramApiClient:
@@ -556,7 +556,7 @@ class NaverOpenApiClient:
 
 
 # ==============================================================================
-# 2. Mock Test Suite (19 Endpoints Request/Response Specification Verification)
+# 2. 목(Mock) 테스트 스위트 (19개 엔드포인트 요청/응답 규격 정합성 검증)
 # ==============================================================================
 
 class TestInstagramApiMock:
@@ -1271,7 +1271,7 @@ class TestNaverOpenApiMock:
 
 
 # ==============================================================================
-# 3. Live Test Suite (Actual API Execution with Environment Credentials)
+# 3. 라이브 테스트 스위트 (환경변수 인증 정보를 활용한 실서버 API 연동 검증)
 # ==============================================================================
 
 def safe_live_call(api_func):
@@ -1462,16 +1462,16 @@ class TestNaverOpenApiLive:
 
 
 # ==============================================================================
-# 4. CLI Runner for Direct Execution (`python tests/api_test.py`)
+# 4. CLI 직접 실행기 (통합 진단 실행용: `python scripts/api_diagnostics.py`)
 # ==============================================================================
 
 API_REGISTRY = [
-    # Instagram Graph API (4)
+    # 인스타그램 Graph API (4개 엔드포인트)
     {"platform": "Instagram", "name": "해시태그 ID 검색", "method": "GET", "endpoint": "/ig_hashtag_search", "key_var": "INSTAGRAM_ACCESS_TOKEN"},
     {"platform": "Instagram", "name": "해시태그 인기글", "method": "GET", "endpoint": "/{hashtag-id}/top_media", "key_var": "INSTAGRAM_ACCESS_TOKEN"},
     {"platform": "Instagram", "name": "해시태그 최신글", "method": "GET", "endpoint": "/{hashtag-id}/recent_media", "key_var": "INSTAGRAM_ACCESS_TOKEN"},
     {"platform": "Instagram", "name": "타 계정 조회 (Business Discovery)", "method": "GET", "endpoint": "/{ig-user-id}?fields=business_discovery...", "key_var": "INSTAGRAM_ACCESS_TOKEN"},
-    # YouTube Data API v3 (7)
+    # YouTube Data API v3 (7개 엔드포인트)
     {"platform": "YouTube", "name": "경쟁사 공식 채널 검색", "method": "GET", "endpoint": "/search (type=channel)", "key_var": "YOUTUBE_API_KEY"},
     {"platform": "YouTube", "name": "경쟁사 광고 후보 영상 검색", "method": "GET", "endpoint": "/search (channelId, 기간)", "key_var": "YOUTUBE_API_KEY"},
     {"platform": "YouTube", "name": "영상 상세정보 및 반응 조회", "method": "GET", "endpoint": "/videos (part=snippet,stats...)", "key_var": "YOUTUBE_API_KEY"},
@@ -1479,7 +1479,7 @@ API_REGISTRY = [
     {"platform": "YouTube", "name": "채널 상세정보 확인", "method": "GET", "endpoint": "/channels", "key_var": "YOUTUBE_API_KEY"},
     {"platform": "YouTube", "name": "경쟁사 최근 업로드 영상 조회", "method": "GET", "endpoint": "/playlistItems (uploads)", "key_var": "YOUTUBE_API_KEY"},
     {"platform": "YouTube", "name": "유료 프로모션 표시 영상 검색", "method": "GET", "endpoint": "/search (paidPromotion=true)", "key_var": "YOUTUBE_API_KEY"},
-    # Naver Open API / Datalab (8)
+    # 네이버 Open API / 데이터랩 (8개 엔드포인트)
     {"platform": "Naver", "name": "트렌드 조사를 위한 쇼핑 검색", "method": "GET", "endpoint": "/v1/search/shop", "key_var": "NAVER_CLIENT_ID"},
     {"platform": "Naver", "name": "검색어 트렌드 조회", "method": "POST", "endpoint": "/v1/datalab/search", "key_var": "NAVER_CLIENT_ID"},
     {"platform": "Naver", "name": "쇼핑 분야별 검색 클릭 추이", "method": "POST", "endpoint": "/v1/datalab/shopping/categories", "key_var": "NAVER_CLIENT_ID"},

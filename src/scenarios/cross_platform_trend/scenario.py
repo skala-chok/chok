@@ -198,7 +198,7 @@ class CrossPlatformTrendScenario(BaseScenario):
             except Exception as e:
                 logger.warning("Step 4 (LLM 리포트 생성) 실패: %s -> 기본 데이터 포맷팅 반환", e)
 
-        # Fallback: LLM 미사용 또는 실패 시 원본 수집 데이터 정렬 반환
+        # 폴백: LLM 미사용 또는 호출 실패 시 수집된 원본 데이터 정렬 반환
         return (
             f"### [{params.keyword}] 크로스 플랫폼 트렌드 분석 결과\n\n"
             f"**분석 기간**: {params.start_date} ~ {params.end_date}\n\n"

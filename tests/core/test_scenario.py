@@ -201,7 +201,7 @@ class TestAgentRunnerWithScenario:
         scenario = DummyScenario()
         scenario_registry.register(scenario)
 
-        # Mock Router that returns a valid plan
+        # 유효한 실행 계획을 반환하는 목(Mock) 라우터
         mock_router = MagicMock()
         mock_router.route.return_value = ScenarioExecutionPlan(
             scenario_name="dummy_scenario",

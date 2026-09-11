@@ -15,7 +15,7 @@ from src.core.registry import ModuleRegistry
 
 @tool
 def add_numbers(a: int, b: int) -> int:
-    """Add two numbers."""
+    """두 숫자를 더합니다."""
     return a + b
 
 
@@ -114,7 +114,7 @@ def test_guardrailed_tool_supports_custom_basetool_class():
 async def test_guardrailed_tool_async_support():
     @tool
     async def async_multiply(x: int, y: int) -> int:
-        """Multiply two numbers asynchronously."""
+        """두 숫자를 비동기로 곱합니다."""
         return x * y
 
     class AsyncGuardrail(BaseGuardrail):
@@ -320,13 +320,13 @@ def test_module_registry_discover_modules_broken_and_imported_classes(
     pkg_dir.mkdir()
     (pkg_dir / "__init__.py").write_text("", encoding="utf-8")
 
-    # 1. Broken module with syntax error
+    # 1. 문법 오류가 있는 결함 모듈
     broken_dir = pkg_dir / "broken_mod"
     broken_dir.mkdir()
     (broken_dir / "__init__.py").write_text("", encoding="utf-8")
     (broken_dir / "module.py").write_text("def broken( syntax_error: : :", encoding="utf-8")
 
-    # 2. External module
+    # 2. 외부 모듈
     ext_dir = pkg_dir / "external_mod"
     ext_dir.mkdir()
     (ext_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -350,7 +350,7 @@ class ExternalModule(BaseAgentModule):
         encoding="utf-8",
     )
 
-    # 3. Good module that imports ExternalModule from external_mod
+    # 3. external_mod에서 ExternalModule을 임포트하는 정상 모듈
     good_dir = pkg_dir / "good_mod"
     good_dir.mkdir()
     (good_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -381,10 +381,10 @@ class GoodModule(BaseAgentModule):
     with caplog.at_level(logging.WARNING):
         registry.discover_modules("mixed_modules")
 
-    # Both good and external should be registered, broken should be skipped with warning log
+    # 정상 모듈과 외부 모듈은 등록되고, 결함 모듈은 경고 로그와 함께 안전하게 스킵되어야 함
     assert "good" in registry
     assert "external" in registry
-    # Ensure broken module did not crash discovery
+    # 결함 모듈로 인해 전체 탐색 프로세스가 중단되지 않음을 확인
     assert len(registry) == 2
 
 

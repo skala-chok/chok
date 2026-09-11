@@ -1,4 +1,4 @@
-"""Core architecture components."""
+"""코어 아키텍처 및 공통 컴포넌트 패키지."""
 from src.core.base import (
     BaseAgentModule,
     BaseContextProvider,

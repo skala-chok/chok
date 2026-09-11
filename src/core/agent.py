@@ -87,7 +87,7 @@ class AgentRunner:
         self.tools = raw_tools
         self.system_prompt_text = "\n".join(system_snippets)
 
-        # Initialize LLM
+        # 3. LLM 인스턴스 초기화
         if llm is not None:
             self.llm = llm
         else:
@@ -100,7 +100,7 @@ class AgentRunner:
                 llm_kwargs["reasoning_effort"] = "none"
             self.llm = ChatOpenAI(**llm_kwargs)
 
-        # Assemble Scenario Registry & Router
+        # 4. 시나리오 레지스트리 및 지능형 라우터 조립
         if scenario_registry is not None:
             self.scenario_registry = scenario_registry
         else:
@@ -114,7 +114,7 @@ class AgentRunner:
         else:
             self.router = None
 
-        # Assemble Prompt for Fallback General Agent
+        # 5. 범용 폴백 ReAct 에이전트용 시스템 프롬프트 구성
         # 시스템 프롬프트에 현재 날짜를 명시하지 않으면 LLM이 "최근 N개월" 같은 상대적 기간을
         # 학습 데이터 기준으로 잘못 추측한다 (예: 2026년 요청을 2023년으로 계산). run()에서
         # 매 요청마다 실제 오늘 날짜를 {current_date}로 채워 넣는다.
@@ -131,7 +131,7 @@ class AgentRunner:
             MessagesPlaceholder(variable_name="agent_scratchpad"),
         ])
 
-        # Create Fallback General Agent
+        # 6. 범용 폴백 ReAct 에이전트 생성
         agent = create_tool_calling_agent(self.llm, self.tools, prompt)
         self.executor = AgentExecutor(
             agent=agent,

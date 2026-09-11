@@ -213,11 +213,11 @@ class TestInstagramOpenApiFallbackHarness:
 class TestInstagramGuardrails:
     def test_validate_search_hashtag_id(self):
         gr = InstagramGuardrail()
-        # Non-empty valid
+        # 유효한 비어있지 않은 쿼리 통과 검증
         assert gr.validate_tool_args("search_hashtag_id", {"query": "성남맛집"}).passed is True
         assert gr.validate_tool_args("search_hashtag_id", {"query": "#성남 맛집"}).passed is True
 
-        # Empty / whitespace only
+        # 빈 문자열 및 공백 쿼리 차단 검증
         assert gr.validate_tool_args("search_hashtag_id", {"query": ""}).passed is False
         assert gr.validate_tool_args("search_hashtag_id", {"query": "   "}).passed is False
         assert gr.validate_tool_args("search_hashtag_id", {"query": "#"}).passed is False

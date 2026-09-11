@@ -100,7 +100,7 @@ def test_main_cli_mock_runner_factory():
     runner = _create_mock_runner(reg)
     assert runner is not None
     assert runner.router is not None
-    # Check mock router routing branches
+    # 목 라우터의 시나리오 분기 정상 동작 검증
     plan1 = runner.router.route("성남맛집 인스타 해시태그")
     assert plan1.scenario_name == "hashtag_surge_detection"
 

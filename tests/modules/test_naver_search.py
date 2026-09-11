@@ -60,7 +60,7 @@ def test_naver_search_context_provider():
 def test_naver_search_guardrail_input_validation():
     guard = NaverSearchGuardrail()
 
-    # Empty query rejection
+    # 빈 쿼리 입력 차단 검증
     res_empty = guard.validate_input("")
     assert res_empty.passed is False
     assert "검색 쿼리가 비어 있습니다" in res_empty.error_message
@@ -68,7 +68,7 @@ def test_naver_search_guardrail_input_validation():
     res_whitespace = guard.validate_input("   ")
     assert res_whitespace.passed is False
 
-    # Valid query
+    # 정상 쿼리 통과 검증
     res_valid = guard.validate_input("인공지능 트렌드")
     assert res_valid.passed is True
 
@@ -77,7 +77,7 @@ def test_naver_search_guardrail_tool_args_validation():
     guard = NaverSearchGuardrail()
 
     for tool_name in ["search_naver_blog", "search_naver_news"]:
-        # display validation (1 to 10)
+        # display 파라미터 범위 검증 (1~10)
         assert guard.validate_tool_args(tool_name, {"query": "test", "display": 5}).passed is True
         assert guard.validate_tool_args(tool_name, {"query": "test", "display": 1}).passed is True
         assert guard.validate_tool_args(tool_name, {"query": "test", "display": 10}).passed is True
@@ -91,7 +91,7 @@ def test_naver_search_guardrail_tool_args_validation():
         assert res_too_small.passed is False
         assert "display" in res_too_small.error_message
 
-        # sort validation ('sim' or 'date')
+        # sort 정렬 옵션 검증 ('sim' 또는 'date')
         assert guard.validate_tool_args(tool_name, {"query": "test", "sort": "sim"}).passed is True
         assert guard.validate_tool_args(tool_name, {"query": "test", "sort": "date"}).passed is True
 
@@ -99,7 +99,7 @@ def test_naver_search_guardrail_tool_args_validation():
         assert res_invalid_sort.passed is False
         assert "sort" in res_invalid_sort.error_message
 
-    # Other tools should pass
+    # 검증 대상 외 기타 도구 통과 검증
     assert guard.validate_tool_args("other_tool", {"display": 100}).passed is True
 
 
