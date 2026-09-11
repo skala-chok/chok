@@ -319,3 +319,56 @@ class TestCrossPlatformTrendScenario:
         assert "#### 3. 인스타그램 해시태그 반응" in result
         assert "인스타그램 인기 게시물 데이터" in result
 
+    def test_cross_platform_trend_korean_fallback_id(self):
+        """한글 키워드 기반 Fallback Mock ID(예: fallback_ht_러닝화)가 온전히 추출되는지 검증."""
+        scenario = CrossPlatformTrendScenario()
+        params = CrossPlatformTrendParams(keyword="러닝화")
+
+        mock_ig_search = MagicMock()
+        mock_ig_search.invoke.return_value = "[Fallback Mock] 해시태그 ID: fallback_ht_러닝화"
+
+        mock_ig_top = MagicMock()
+        mock_ig_top.invoke.return_value = "[Fallback Mock] 누적 인기 게시물: #러닝화"
+
+        tools = {
+            "search_hashtag_id": mock_ig_search,
+            "get_hashtag_top_media": mock_ig_top,
+        }
+
+        result = scenario.execute(params, tools, context={})
+        mock_ig_top.invoke.assert_called_once_with({"hashtag_id": "fallback_ht_러닝화"})
+        assert "fallback_ht_러닝화" not in result or "[Fallback Mock]" in result
+
+    def test_cross_platform_trend_missing_instagram_tools(self):
+        """인스타그램 도구가 미등록 상태일 때 크래시 없이 기본 안내 메시지로 폴백되는지 검증."""
+        scenario = CrossPlatformTrendScenario()
+        params = CrossPlatformTrendParams(keyword="러닝화")
+
+        tools = {
+            "get_shopping_trends": MagicMock(invoke=MagicMock(return_value="쇼핑")),
+            "search_youtube_videos": MagicMock(invoke=MagicMock(return_value="유튜브")),
+        }
+
+        result = scenario.execute(params, tools, context={})
+        assert "인스타그램 도구를 사용할 수 없습니다." in result
+
+    def test_cross_platform_trend_instagram_search_failure(self):
+        """해시태그 ID 조회 실패 시 인기 게시물 도구를 허위 ID로 호출하지 않고 안내 메시지를 보존하는지 검증."""
+        scenario = CrossPlatformTrendScenario()
+        params = CrossPlatformTrendParams(keyword="존재하지않는태그")
+
+        mock_ig_search = MagicMock()
+        mock_ig_search.invoke.return_value = "해시태그 '존재하지않는태그'에 대한 ID를 찾을 수 없습니다."
+
+        mock_ig_top = MagicMock()
+
+        tools = {
+            "search_hashtag_id": mock_ig_search,
+            "get_hashtag_top_media": mock_ig_top,
+        }
+
+        result = scenario.execute(params, tools, context={})
+        mock_ig_top.invoke.assert_not_called()
+        assert "해시태그 '존재하지않는태그'에 대한 ID를 찾을 수 없습니다." in result
+
+

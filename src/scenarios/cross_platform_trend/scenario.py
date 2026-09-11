@@ -113,29 +113,37 @@ class CrossPlatformTrendScenario(BaseScenario):
         ig_result = "인스타그램 도구를 사용할 수 없습니다."
 
         clean_tag = params.keyword.strip().lstrip("#").replace(" ", "")
-        hashtag_id = None
+        if not clean_tag:
+            ig_result = "유효한 해시태그 키워드가 아닙니다."
+        else:
+            hashtag_id = None
+            search_res_str = ""
 
-        if ig_search_tool:
-            try:
-                search_res = ig_search_tool.invoke({"query": clean_tag})
-                id_match = re.search(r"해시태그 ID:\s*([0-9a-zA-Z_]+)", str(search_res))
-                if id_match:
-                    hashtag_id = id_match.group(1).strip()
-                logger.debug("Step 3-3 (인스타그램 해시태그 ID 조회) 완료: ID=%s", hashtag_id)
-            except Exception as e:
-                logger.warning("Step 3-3 (인스타그램 ID 조회) 호출 실패: %s", e)
+            if ig_search_tool:
+                try:
+                    search_res = ig_search_tool.invoke({"query": clean_tag})
+                    search_res_str = str(search_res)
+                    id_match = re.search(r"해시태그 ID:\s*(\S+)", search_res_str)
+                    if id_match:
+                        hashtag_id = id_match.group(1).strip()
+                    logger.debug("Step 3-3 (인스타그램 해시태그 ID 조회) 완료: ID=%s", hashtag_id)
+                except Exception as e:
+                    logger.warning("Step 3-3 (인스타그램 ID 조회) 호출 실패: %s", e)
+                    search_res_str = f"인스타그램 해시태그 ID 조회 실패: {e}"
 
-        if not hashtag_id:
-            hashtag_id = f"ht_{clean_tag}"
-
-        if ig_top_tool:
-            try:
-                top_res = ig_top_tool.invoke({"hashtag_id": hashtag_id})
-                ig_result = str(top_res)
-                logger.debug("Step 3-3 (인스타그램 인기 미디어) 완료: %s", ig_result[:100])
-            except Exception as e:
-                logger.warning("Step 3-3 (인스타그램 미디어 조회) 호출 실패: %s", e)
-                ig_result = f"인스타그램 해시태그 반응 조회 실패: {e}"
+            if hashtag_id:
+                if ig_top_tool:
+                    try:
+                        top_res = ig_top_tool.invoke({"hashtag_id": hashtag_id})
+                        ig_result = str(top_res)
+                        logger.debug("Step 3-3 (인스타그램 인기 미디어) 완료: %s", ig_result[:100])
+                    except Exception as e:
+                        logger.warning("Step 3-3 (인스타그램 미디어 조회) 호출 실패: %s", e)
+                        ig_result = f"인스타그램 해시태그 반응 조회 실패: {e}"
+                else:
+                    ig_result = f"해시태그 ID({hashtag_id})를 획득했으나 인기 게시물 조회 도구를 사용할 수 없습니다."
+            elif search_res_str:
+                ig_result = search_res_str
 
         # 🟢 [Step 4 - 초록점] LLM을 통한 크로스 인사이트 종합 리포트 생성
         if llm:
