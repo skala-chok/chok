@@ -3,6 +3,7 @@ import inspect
 import json
 import logging
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,15 @@ from typing import Any, Dict, List, Optional, Type
 PROJECT_ROOT = str(Path(__file__).resolve().parent)
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+matplotlib.rcParams["font.family"] = "sans-serif"
+matplotlib.rcParams["font.sans-serif"] = [
+    "Apple SD Gothic Neo", "AppleGothic", "NanumGothic", "Malgun Gothic", "DejaVu Sans",
+]
+matplotlib.rcParams["axes.unicode_minus"] = False
 
 import streamlit as st
 from pydantic import BaseModel
@@ -26,6 +36,7 @@ from src.core.scenario import BaseScenario, ScenarioExecutionPlan
 from src.core.guardrails import wrap_tool_with_guardrails
 from src.core.router import ScenarioRouter
 from src.core.agent import AgentRunner
+from src.scenarios.naver_trend_analysis import scenario as naver_trend_scenario
 
 # 로거 설정
 logging.basicConfig(level=logging.INFO)
@@ -577,8 +588,8 @@ SCENARIO_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
-
 from langchain_core.callbacks import BaseCallbackHandler
+
 
 
 class StreamlitToolCallbackHandler(BaseCallbackHandler):
@@ -614,6 +625,163 @@ class StreamlitToolCallbackHandler(BaseCallbackHandler):
             self.status.write(msg)
             self.log_store.append(msg)
 
+
+# ==============================================================================
+# 📈 트렌드 차트 시각화 헬퍼 함수 (origin/dev naver_trend_analysis 연동)
+# ==============================================================================
+_TREND_LINE_COLORS = ["#5B84B1", "#C97064", "#6FAE8F", "#9C8AC4", "#D3A24C", "#5FA8A0"]
+_AXIS_GRAY = "#8C8C8C"
+_GRID_GRAY = "#BFBFBF"
+
+_TREND_TITLE_RE = re.compile(r"^\[(.+?)\]$")
+_TREND_POINT_RE = re.compile(r"^\s*-\s*([\d-]+)(?:\s*\(([^)]+)\))?:\s*([\d.]+)\s*$")
+
+# naver_trend_analysis 도구 이름 -> 차트 제목 (원본 수치는 scenario.LAST_RUN_TOOL_RESULTS에서 읽음).
+_NAVER_TREND_TOOL_LABELS = {
+    "get_shopping_category_trend": "분야 전체 트렌드 (쇼핑 영역)",
+    "get_shopping_trends": "통합검색 기준 키워드 전체 관심도",
+    # get_shopping_keyword_trend(쇼핑 영역 세부 키워드 비교)는 리포트 표로만 보여주고 차트에서는 제외
+    "get_shopping_category_gender_trend": "분야 전체 성별 트렌드",
+    "get_shopping_category_age_trend": "분야 전체 연령별 트렌드",
+    "get_shopping_keyword_gender_trend": "키워드 성별 트렌드",
+    "get_shopping_keyword_age_trend": "키워드 연령별 트렌드",
+}
+
+
+def _parse_series_block(text: str) -> Dict[str, List[tuple]]:
+    """get_shopping_*_trend 계열 도구의 '[제목]\n  - 기간(그룹): 값' 형식 텍스트를 역파싱한다."""
+    series: Dict[str, List[tuple]] = {}
+    current_title: Optional[str] = None
+    for line in text.splitlines():
+        title_match = _TREND_TITLE_RE.match(line.strip())
+        if title_match:
+            current_title = title_match.group(1)
+            series[current_title] = []
+            continue
+        point_match = _TREND_POINT_RE.match(line)
+        if point_match and current_title is not None:
+            period, group, ratio = point_match.groups()
+            series[current_title].append((period, group, float(ratio)))
+    return {title: pts for title, pts in series.items() if pts}
+
+
+def _shorten_names(names: List[str], limit: int = 22) -> str:
+    joined = ", ".join(names)
+    return joined if len(joined) <= limit else joined[:limit - 1] + "…"
+
+
+def _plot_trend_lines(periods: List[str], series_map: Dict[str, List[float]], title: str = "") -> "plt.Figure":
+    """periods(x축)와 {계열명: 값 리스트}를 받아 추이 중심의 작고 정갈한 라인 차트를 그린다.
+
+    가독성을 위해 점마다 값을 표시하지 않고 마지막 값만 라벨링하며, 축/그리드는 옅은 회색,
+    선 색상은 채도를 낮춘 팔레트를 사용한다. 여러 차트를 한 화면에 나란히 놓고 볼 것을
+    전제로 작게 그리고(표시 시 화면 폭을 억지로 채우지 않음), 흰 속 + 색 테두리 마커로
+    좀 더 정돈된 느낌을 준다.
+    """
+    fig, ax = plt.subplots(figsize=(3.0, 2.0), dpi=130)
+    x = list(range(len(periods)))
+    all_values: List[float] = []
+    for i, (name, values) in enumerate(series_map.items()):
+        color = _TREND_LINE_COLORS[i % len(_TREND_LINE_COLORS)]
+        ax.plot(x, values, linewidth=2.0, solid_capstyle="round", color=color,
+                marker="o", markersize=5.5, markerfacecolor="white",
+                markeredgecolor=color, markeredgewidth=1.6, label=name, zorder=3)
+        # 가독성을 위해 마지막 값만 라벨링 (점마다 라벨을 달지 않음)
+        ax.annotate(f"{values[-1]:g}", xy=(x[-1], values[-1]), textcoords="offset points",
+                    xytext=(6, 0), va="center", fontsize=7, color=color, fontweight="bold")
+        all_values.extend(values)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(periods, rotation=0, ha="center", fontsize=6.3, color=_AXIS_GRAY)
+    ax.tick_params(axis="both", length=0, labelsize=6.3, colors=_AXIS_GRAY)
+
+    if all_values:
+        y_min, y_max = min(all_values), max(all_values)
+        pad = max((y_max - y_min) * 0.3, 1.0)
+        ax.set_ylim(y_min - pad, y_max + pad)
+    ax.margins(x=0.18)
+
+    ax.grid(axis="y", linestyle="-", linewidth=0.5, alpha=0.3, color=_GRID_GRAY)
+    for spine in ("top", "right", "left"):
+        ax.spines[spine].set_visible(False)
+    ax.spines["bottom"].set_color(_GRID_GRAY)
+    ax.spines["bottom"].set_linewidth(0.8)
+
+    if title:
+        ax.set_title(title, fontsize=8, color="#333333", fontweight="bold", loc="left", pad=8)
+    if len(series_map) > 1:
+        ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.28), ncol=min(len(series_map), 3),
+                   fontsize=6.3, frameon=False, labelcolor=_AXIS_GRAY)
+    fig.tight_layout()
+    return fig
+
+
+def _render_trend_charts(chart_tool_results: Dict[str, str]) -> None:
+    """naver_trend_analysis 시나리오가 실행됐다면 원본 수치를 matplotlib 차트로 함께 보여준다."""
+    if not chart_tool_results:
+        return
+
+    figs: List["plt.Figure"] = []
+    for tool_name, label in _NAVER_TREND_TOOL_LABELS.items():
+        raw = chart_tool_results.get(tool_name)
+        if not raw:
+            continue
+        series = _parse_series_block(raw)
+        if not series:
+            continue
+        has_group = any(group is not None for points in series.values() for _, group, _ in points)
+
+        if has_group:
+            for title, points in series.items():
+                periods = sorted({p for p, _, _ in points})
+                if len(periods) < 2:
+                    continue  # 데이터 포인트가 1개뿐이면 추이를 보여줄 수 없어 차트를 그리지 않음
+                by_group: Dict[str, List[float]] = {}
+                for p, group, ratio in points:
+                    by_group.setdefault(group or "전체", [None] * len(periods))
+                    by_group[group or "전체"][periods.index(p)] = ratio
+                # None(결측) 구간은 마지막 관측값으로 보간해 라인이 끊기지 않도록 처리
+                for vals in by_group.values():
+                    last = 0.0
+                    for i, v in enumerate(vals):
+                        if v is None:
+                            vals[i] = last
+                        else:
+                            last = v
+                figs.append(_plot_trend_lines(periods, by_group, title=f"{label} · {title}"))
+        else:
+            periods = sorted({p for points in series.values() for p, _, _ in points})
+            if len(periods) < 2:
+                continue  # 데이터 포인트가 1개뿐이면 추이를 보여줄 수 없어 차트를 그리지 않음
+            series_map: Dict[str, List[float]] = {}
+            for title, points in series.items():
+                by_period = {p: r for p, _, r in points}
+                series_map[title] = [by_period.get(p, 0.0) for p in periods]
+            chart_title = f"{label} · {_shorten_names(list(series_map.keys()))}"
+            figs.append(_plot_trend_lines(periods, series_map, title=chart_title))
+
+    if not figs:
+        return
+
+    st.info(
+        "📌 아래 ratio는 조회 구간 내 최댓값을 100으로 정규화한 상대값입니다 (절대 검색량·구매자 수가 아닙니다). "
+        "서로 다른 항목의 수치는 모수가 달라 직접 비교할 수 없습니다."
+    )
+    # 여러 차트를 세로로 쌓지 않고 한 줄(최대 4개)에 나란히 배치. width="content"로
+    # 컨테이너 폭에 억지로 늘리지 않고 차트 실제 크기(작게) 그대로 표시한다.
+    cols_per_row = 4
+    for i in range(0, len(figs), cols_per_row):
+        row_figs = figs[i:i + cols_per_row]
+        cols = st.columns(len(row_figs))
+        for col, fig in zip(cols, row_figs):
+            with col:
+                st.pyplot(fig, clear_figure=True, width="content")
+            plt.close(fig)
+
+
+def _render_agent_message(msg: Dict[str, Any]) -> None:
+    st.markdown(msg["content"])
+    _render_trend_charts(msg.get("chart_tool_results") or {})
 
 
 # ==============================================================================
@@ -714,7 +882,7 @@ with tab_agent:
             for msg in st.session_state.messages:
                 avatar = "🧑‍💻" if msg["role"] == "user" else "🤖"
                 with st.chat_message(msg["role"], avatar=avatar):
-                    st.markdown(msg["content"])
+                    _render_agent_message(msg)
                     if msg.get("tool_logs"):
                         with st.expander(f"🛠️ 실행된 도구 및 처리 과정 로그 ({len(msg['tool_logs'])}건)", expanded=False):
                             for log_entry in msg["tool_logs"]:
@@ -749,12 +917,10 @@ with tab_agent:
                             is_blocked = True
                             status_box.update(label="🛑 가드레일 정책 위반 차단", state="error")
                             final_ans = f"[안내] 입력이 시스템 안전 가드레일 정책에 의해 차단되었습니다:\n- **사유**: {val_res.error_message}"
-                            response_placeholder.markdown(final_ans)
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": final_ans,
-                                "tool_logs": current_tool_logs,
-                            })
+                            blocked_msg = {"role": "assistant", "content": final_ans, "tool_logs": current_tool_logs}
+                            with response_placeholder.container():
+                                _render_agent_message(blocked_msg)
+                            st.session_state.messages.append(blocked_msg)
                             break
 
                     if not is_blocked:
@@ -817,25 +983,25 @@ with tab_agent:
                                     f"### 📊 [{kw}] 크로스 플랫폼 트렌드 분석 종합 리포트\n\n"
                                     f"**분석 기간**: 2026-01-01 ~ 2026-03-01\n\n"
                                     f"#### 1. 📈 네이버 쇼핑 트렌드 요약\n"
-                                    f"- '{kw}'의 상대 검색비율은 최근 **84.5%**로 전월 대비 가파른 상승세를 보이고 있습니다.\n\n"
-                                    f"#### 2. 🎬 유튜브 미디어 반응 요약\n"
-                                    f"- 최신 실착 리뷰 및 가성비 추천 영상 조회수가 10만 회를 돌파하며 높은 관심도를 반영하고 있습니다.\n\n"
-                                    f"#### 3. 📸 인스타그램 해시태그 소셜 반응 요약\n"
-                                    f"- #{kw} 누적 인기 게시물의 평균 참여도(좋아요+댓글)는 52.0으로 소셜 상에서 활발한 인증 문화가 형성되어 있습니다.\n\n"
-                                    f"#### 4. 💡 비즈니스 시사점\n"
-                                    f"- 검색(네이버) $\\rightarrow$ 영상 리뷰(유튜브) $\\rightarrow$ 피드 인증(인스타그램)의 3단계 고객 여정을 고려한 옴니채널 마케팅 집중 투자가 권장됩니다."
+                                    f"- 1월 대비 2월 러닝화 검색량 지수 38% 증가 (봄 시즌 야외 운동 수요 증가 반영)\n\n"
+                                    f"#### 2. 🎬 유튜브 영상 콘텐츠 분석\n"
+                                    f"- '2026 입문용 러닝화 추천 Top 5', '쿠셔닝 끝판왕 비교 리뷰' 등 실착 중심 리뷰 콘텐츠 인기\n"
+                                    f"- 평균 조회수 4.2만 회, 좋아요 비율 96.2%로 구매 고려 단계 시청자 반응 우수\n\n"
+                                    f"#### 3. 📸 인스타그램 소셜 반응 및 해시태그 감성\n"
+                                    f"- `#러닝화` (누적 게시물 420K+), `#오운완`, `#러닝스타그램` 태그 중심 데일리 착용 인증 급증\n"
+                                    f"- 긍정 감성 비중 88% ('가볍다', '발편한', '디자인 예쁜' 키워드 지배적)\n\n"
+                                    f"---\n"
+                                    f"**💡 AI 에이전트 종합 제언**: 3월 마케팅 캠페인은 기능성(쿠셔닝) 유튜브 상세 리뷰와 인스타그램 일상 착용 챌린지를 연계하고, 네이버 스마트스토어 기획전 유입을 유도하는 옴니채널 전략이 권장됩니다."
                                 )
                             else:
                                 log_status(f"🔍 **[일반 에이전트 실행]** ReAct 도구 호출 루프 가동 (모델: `{model_name}`)")
                                 status_box.update(label="✅ 일반 에이전트 답변 완료", state="complete", expanded=False)
                                 final_ans = f"'{user_input}'에 대한 일반 에이전트 응답입니다. (Mock 모드: 실제 질의 처리는 사이드바에 API 키를 입력해 주세요.)"
 
-                            response_placeholder.markdown(final_ans)
-                            st.session_state.messages.append({
-                                "role": "assistant",
-                                "content": final_ans,
-                                "tool_logs": current_tool_logs,
-                            })
+                            mock_msg = {"role": "assistant", "content": final_ans, "tool_logs": current_tool_logs}
+                            with response_placeholder.container():
+                                _render_agent_message(mock_msg)
+                            st.session_state.messages.append(mock_msg)
 
                         else:
                             # 실제 AgentRunner 가동
@@ -863,13 +1029,18 @@ with tab_agent:
                                     callbacks=[cb_handler],
                                     on_status=log_status,
                                 )
+                                # 다음 시나리오 실행이 초기화하기 전에 원본 도구 결과를 복사해 둔다.
+                                chart_tool_results = dict(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
                                 status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
-                                response_placeholder.markdown(final_ans)
-                                st.session_state.messages.append({
+                                real_msg = {
                                     "role": "assistant",
                                     "content": final_ans,
                                     "tool_logs": current_tool_logs,
-                                })
+                                    "chart_tool_results": chart_tool_results,
+                                }
+                                with response_placeholder.container():
+                                    _render_agent_message(real_msg)
+                                st.session_state.messages.append(real_msg)
                             except Exception as e_run:
                                 status_box.update(label="❌ 실행 오류", state="error")
                                 err_msg = f"에이전트 실행 중 오류가 발생했습니다: {e_run}"
@@ -879,6 +1050,7 @@ with tab_agent:
                                     "content": err_msg,
                                     "tool_logs": current_tool_logs,
                                 })
+
 
 
 
@@ -1091,6 +1263,7 @@ with tab_test:
 
                         st.markdown("### 📊 최종 시나리오 분석 리포트")
                         st.markdown(final_report)
+                        _render_trend_charts(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
 
                     except Exception as e_scen:
                         progress_bar.empty()

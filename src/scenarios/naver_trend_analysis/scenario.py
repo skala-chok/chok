@@ -3,7 +3,7 @@ from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.core.scenario import BaseScenario
 
@@ -13,10 +13,16 @@ _CANDIDATE_CODE_RE = re.compile(r"category_code=(\d+)")
 
 _GENDER_KR = {"m": "남성", "f": "여성"}
 
+# 차트용 원본 도구 결과: app.py가 실행 직후 읽어가며, 매 execute() 시작 시 초기화된다.
+LAST_RUN_TOOL_RESULTS: Dict[str, str] = {}
+
 
 def _run(tools: Dict[str, BaseTool], name: str, **kwargs: Any) -> str:
     tool = tools.get(name)
-    return tool.invoke(kwargs) if tool else f"{name} 도구를 사용할 수 없습니다."
+    result = tool.invoke(kwargs) if tool else f"{name} 도구를 사용할 수 없습니다."
+    if isinstance(result, str):
+        LAST_RUN_TOOL_RESULTS[name] = result
+    return result
 
 
 def _resolve_category_code(tools: Dict[str, BaseTool], search_term: str, given_code: str) -> Tuple[str, Optional[str]]:
@@ -320,9 +326,26 @@ class NewProductKeywordTrendParams(BaseModel):
             "(시나리오 실행 시 category_name으로 자동 조회·검증됩니다)."
         ),
     )
-    keywords: str = Field(description="비교할 세부 키워드, 쉼표로 구분 (예: '수분스킨,저자극스킨,맨즈스킨'), 최대 5개")
+    keywords: str = Field(
+        description=(
+            "비교할 세부 키워드, 쉼표로 구분 (예: '수분스킨,저자극스킨,맨즈스킨'), 최대 5개. "
+            "사용자가 명시적인 비교 키워드 목록 없이 특정 신제품명만 언급했다면(예: '신제품 러닝화 마케팅'), "
+            "그 제품명 자체를 keywords에 채우십시오 (예: '러닝화'). 이 필드를 절대 비워두지 마십시오."
+        )
+    )
     start_date: str = Field(default_factory=_default_start, description="분석 시작일, YYYY-MM-DD (기본: 최근 3개월)")
     end_date: str = Field(default_factory=_default_end, description="분석 종료일, YYYY-MM-DD")
+
+    @field_validator("keywords")
+    @classmethod
+    def _reject_empty_keywords(cls, v: str) -> str:
+        # 라우터(LLM)가 질의에 분명히 언급된 세부 키워드(예: '러닝화')를 놓치고 keywords를
+        # 빈 문자열로 채우는 경우가 있다. 이때 category_name으로 조용히 대체하면 사용자가
+        # 요청한 키워드와 다른 대상이 분석/차트에 나오므로, 차라리 검증 실패로 처리해
+        # 일반 에이전트로 폴백시킨다 (agent.py의 기존 폴백 경로, 코어 수정 없이 동작).
+        if not v or not v.strip():
+            raise ValueError("keywords가 비어 있습니다 (라우터가 세부 키워드 추출에 실패함).")
+        return v
 
 
 class NewProductKeywordTrendScenario(BaseScenario):
@@ -355,6 +378,7 @@ class NewProductKeywordTrendScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
+        LAST_RUN_TOOL_RESULTS.clear()
         kw_list = [k.strip() for k in params.keywords.split(",") if k.strip()]
         search_term = _pick_search_term(params.category_name, *kw_list)
         display_name = params.category_name or search_term or "(분야 미지정)"
@@ -457,6 +481,7 @@ class TargetAudienceValidationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
+        LAST_RUN_TOOL_RESULTS.clear()
         search_term = _pick_search_term(params.category_name, params.keyword)
         display_name = params.category_name or search_term or "(분야 미지정)"
 
@@ -560,6 +585,7 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
+        LAST_RUN_TOOL_RESULTS.clear()
         if not params.keyword or not params.keyword.strip():
             return "### 키워드 타겟팅 세분화\n❌ keyword가 비어 있어 조회할 수 없습니다. 검색 키워드를 알려주세요."
 
