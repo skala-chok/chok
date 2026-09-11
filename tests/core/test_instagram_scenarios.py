@@ -379,6 +379,40 @@ class TestScenario3CompetitorMessageShift:
         # 통과 기준: 표본 부족 시 변화 없음이 아니라 '판단 불가'로 보고
         assert "판단 불가" in output
 
+    def test_scenario3_required_tool_names_and_hashtag_id_resolution(self):
+        """시나리오 3이 search_hashtag_id를 required_tool_names에 포함하고,
+        카테고리 키워드로 ID를 먼저 조회한 후 get_hashtag_top_media에 전달하는지 검증."""
+        scen = CompetitorMessageShiftScenario()
+        assert "search_hashtag_id" in scen.required_tool_names
+        assert "get_hashtag_top_media" in scen.required_tool_names
+        assert "get_competitor_profile" in scen.required_tool_names
+
+        mock_search = MagicMock()
+        mock_search.invoke.return_value = (
+            "[정규화 안내] 검색어 '성남 맛집'에서 '#'과 공백을 제거하여 'q=성남맛집'로 조회합니다.\n"
+            "• 해시태그: #성남맛집\n"
+            "• 해시태그 ID: 17843857450077043\n"
+        )
+        mock_top = MagicMock()
+        mock_top.invoke.return_value = "### [누적 인기글 (top_media)] 5건 수집 완료"
+
+        tools = {
+            "get_competitor_profile": mock_get_competitor_profile,
+            "search_hashtag_id": mock_search,
+            "get_hashtag_top_media": mock_top,
+        }
+        params = CompetitorMessageShiftParams(
+            competitor_username="재슐랭가이드",
+            category_keyword="성남 맛집",
+        )
+        output = scen.execute(params=params, tools=tools)
+
+        # 1. search_hashtag_id가 정규화된 키워드로 호출되었는지 검증
+        mock_search.invoke.assert_called_once_with({"query": "성남맛집"})
+
+        # 2. 파싱된 실제 숫자 해시태그 ID가 get_hashtag_top_media에 전달되었는지 검증
+        mock_top.invoke.assert_called_once_with({"hashtag_id": "17843857450077043"})
+
 
 class TestScenarioRegistryDiscovery:
     """ScenarioRegistry가 신규 인스타그램 시나리오 3종을 자동 발견하는지 검증."""

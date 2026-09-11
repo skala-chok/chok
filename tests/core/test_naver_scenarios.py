@@ -8,10 +8,7 @@ from src.scenarios.naver_trend_analysis.scenario import (
 )
 
 
-def _tool(result: str) -> MagicMock:
-    tool = MagicMock()
-    tool.invoke.return_value = result
-    return tool
+from tests.conftest import make_tool_mock as _tool
 
 
 def _lookup_tool(*codes: str) -> MagicMock:

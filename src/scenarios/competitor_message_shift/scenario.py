@@ -101,7 +101,7 @@ class CompetitorMessageShiftScenario(BaseScenario):
 
     @property
     def required_tool_names(self) -> List[str]:
-        return ["get_competitor_profile", "get_hashtag_top_media"]
+        return ["get_competitor_profile", "search_hashtag_id", "get_hashtag_top_media"]
 
     def _parse_iso(self, ts: str) -> Optional[datetime]:
         try:
@@ -118,6 +118,7 @@ class CompetitorMessageShiftScenario(BaseScenario):
     ) -> str:
         clean_user = params.competitor_username.strip().lstrip("@")
         profile_tool = tools.get("get_competitor_profile")
+        search_hashtag_tool = tools.get("search_hashtag_id")
         top_media_tool = tools.get("get_hashtag_top_media")
 
         # 1. 경쟁사 프로필 및 최근 미디어 캡션 수집
@@ -129,16 +130,32 @@ class CompetitorMessageShiftScenario(BaseScenario):
             except Exception as e:
                 logger.warning("경쟁사 프로필 조회 실패: %s", e)
 
-        # 2. 카테고리 인기 기준선 미디어 수집
+        # 2. 카테고리 인기 기준선 미디어 수집 (search_hashtag_id 선행 호출 후 get_hashtag_top_media 연동)
         category_norm = params.category_keyword.strip().lstrip("#").replace(" ", "")
         benchmark_str = ""
-        if top_media_tool:
-            try:
-                # 카테고리 해시태그 ID 사용 (mock id fallback)
-                b_res = top_media_tool.invoke({"hashtag_id": f"ht_{category_norm}"})
-                benchmark_str = str(b_res)
-            except Exception as e:
-                logger.warning("카테고리 벤치마크 수집 실패: %s", e)
+        if category_norm:
+            hashtag_id = None
+            if search_hashtag_tool:
+                try:
+                    search_res = search_hashtag_tool.invoke({"query": category_norm})
+                    search_res_str = str(search_res)
+                    id_match = re.search(r"해시태그 ID:\s*([0-9a-zA-Z_]+)", search_res_str)
+                    if id_match:
+                        hashtag_id = id_match.group(1).strip()
+                    logger.debug("카테고리 해시태그 ID 조회 완료: ID=%s", hashtag_id)
+                except Exception as e:
+                    logger.warning("카테고리 해시태그 ID 조회 실패 (%s): %s", category_norm, e)
+
+            # search_hashtag_tool 결과가 없거나 ID 파싱 실패 시 fallback 식별자 적용
+            if not hashtag_id:
+                hashtag_id = f"fallback_ht_{category_norm}"
+
+            if top_media_tool:
+                try:
+                    b_res = top_media_tool.invoke({"hashtag_id": hashtag_id})
+                    benchmark_str = str(b_res)
+                except Exception as e:
+                    logger.warning("카테고리 벤치마크 수집 실패 (%s): %s", hashtag_id, e)
 
         # 3. 캡션, 좋아요, 댓글, 타임스탬프 파싱
         post_blocks = re.findall(

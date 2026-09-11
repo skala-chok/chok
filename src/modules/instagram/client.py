@@ -176,6 +176,10 @@ class InstagramApiClient:
         fields: Optional[str] = None,
     ) -> Dict[str, Any]:
         """해시태그 인기글(기준선) 조회 (GET /{hashtag-id}/top_media?user_id={ig-user-id})."""
+        if hashtag_id.startswith("fallback_") or hashtag_id.startswith("ht_mock"):
+            logger.info("모의/폴백 해시태그 ID(%s) 감지: 외부 API 호출을 생략하고 폴백 목 데이터를 반환합니다.", hashtag_id)
+            return self._get_fallback_hashtag_media(hashtag_id, is_recent=False)
+
         url = f"{self.versioned_url}/{hashtag_id}/top_media"
         params = {
             "user_id": self.user_id,
@@ -196,6 +200,10 @@ class InstagramApiClient:
         fields: Optional[str] = None,
     ) -> Dict[str, Any]:
         """해시태그 최신글(24h 현재온도) 조회 (GET /{hashtag-id}/recent_media?user_id={ig-user-id})."""
+        if hashtag_id.startswith("fallback_") or hashtag_id.startswith("ht_mock"):
+            logger.info("모의/폴백 해시태그 ID(%s) 감지: 외부 API 호출을 생략하고 폴백 목 데이터를 반환합니다.", hashtag_id)
+            return self._get_fallback_hashtag_media(hashtag_id, is_recent=True)
+
         url = f"{self.versioned_url}/{hashtag_id}/recent_media"
         params = {
             "user_id": self.user_id,
