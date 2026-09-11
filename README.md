@@ -508,7 +508,7 @@ class CompetitorAnalysisScenario(BaseScenario):
 | **Worker 1** | `src/modules/yt_search` | YouTube 영상/자막 | `search_youtube_videos`<br>`get_video_transcript` | • `max_results` (1~10) 제한<br>• 비어있거나 부적절한 `video_id` 검증 |
 | **Worker 2** | `src/modules/yt_analytics` | YouTube 통계/댓글 | `get_channel_stats`<br>`get_video_comments` | • `max_comments` (1~50) 제한<br>• 댓글 내 이메일/전화번호(PII) 마스킹 정제 |
 | **Worker 3** | `src/modules/naver_search` | 네이버 블로그/뉴스 | `search_naver_blog`<br>`search_naver_news` | • `display` (1~10), `sort` ('sim'/'date') 검증<br>• 응답 내 HTML 태그(`<b>` 등) 제거 |
-| **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑 데이터랩 트렌드 | `get_shopping_trends`<br>`get_shopping_category_trend`<br>`get_shopping_category_gender_trend`<br>`get_shopping_category_age_trend`<br>`get_shopping_keyword_trend`<br>`get_shopping_keyword_gender_trend`<br>`get_shopping_keyword_age_trend` | • 날짜(YYYY-MM-DD) 형식 및 범위(2017-08-01~) 검증<br>• 분야 최대 3개 / 키워드 최대 5개 제한<br>• `time_unit` 값 검증 |
+| **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑 데이터랩 트렌드 | `find_naver_category_code`<br>`get_shopping_trends`<br>`get_shopping_category_trend`<br>`get_shopping_category_gender_trend`<br>`get_shopping_category_age_trend`<br>`get_shopping_keyword_trend`<br>`get_shopping_keyword_gender_trend`<br>`get_shopping_keyword_age_trend` | • 날짜(YYYY-MM-DD) 형식 및 범위(2017-08-01~) 검증<br>• 분야 최대 3개 / 키워드 최대 5개 제한<br>• `time_unit` 값 검증<br>• `category_code` 미보유 시 로컬 카테고리 코드표(5,002건) 키워드 검색으로 자동 조회 |
 | **Worker 5** | `src/modules/instagram` | 인스타그램 그래프 API | `search_hashtag_id`<br>`get_hashtag_recent_media`<br>`get_hashtag_top_media`<br>`get_competitor_profile` | • 해시태그 특수문자 정제<br>• target_username 및 ID 유효성 사전 검증<br>• 캡션 내 이메일/전화번호 마스킹 |
 
 ### Git 브랜치 전략 및 Main 병합 보호 룰 (Branch Protection Rules)

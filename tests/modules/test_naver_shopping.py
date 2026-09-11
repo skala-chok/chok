@@ -9,6 +9,7 @@ import requests
 from unittest.mock import patch, MagicMock
 from src.modules.naver_shopping.module import NaverShoppingModule
 from src.modules.naver_shopping.tools import (
+    find_naver_category_code,
     get_shopping_trends,
     get_shopping_category_trend,
     get_shopping_category_gender_trend,
@@ -19,7 +20,7 @@ from src.modules.naver_shopping.tools import (
 )
 from src.modules.naver_shopping.guardrails import NaverShoppingGuardrail
 from src.modules.naver_shopping.context import NaverShoppingContextProvider
-from src.modules.naver_shopping.client import NaverShoppingClient
+from src.modules.naver_shopping.client import NaverCategoryLookup, NaverShoppingClient
 from src.core.guardrails import wrap_tool_with_guardrails
 
 
@@ -28,8 +29,9 @@ def test_naver_shopping_module_metadata():
     assert mod.name == "naver_shopping"
     assert "쇼핑" in mod.description
     tools = mod.get_tools()
-    assert len(tools) == 7
+    assert len(tools) == 8
     tool_names = [t.name for t in tools]
+    assert "find_naver_category_code" in tool_names
     assert "get_shopping_trends" in tool_names
     assert "get_shopping_category_trend" in tool_names
     assert "get_shopping_category_gender_trend" in tool_names
@@ -634,6 +636,54 @@ def test_get_shopping_keyword_age_trend_openapi_failure_fallback_via_tool(mock_p
         {"category_code": "50000000", "keyword": "니트", "start_date": "2026-01-01", "end_date": "2026-01-31"}
     )
     assert "[Fallback Mock]" in res
+
+
+def test_category_lookup_finds_exact_leaf_matches():
+    results = NaverCategoryLookup.search("러닝화")
+    assert len(results) == 2
+    codes = {r["code"] for r in results}
+    assert codes == {"50003854", "50003835"}
+    assert all("러닝화" in r["path"] for r in results)
+
+
+def test_category_lookup_no_match_returns_empty():
+    assert NaverCategoryLookup.search("존재하지않는상품명xyz123") == []
+
+
+def test_category_lookup_empty_keyword_returns_empty():
+    assert NaverCategoryLookup.search("") == []
+    assert NaverCategoryLookup.search("   ") == []
+
+
+def test_category_lookup_respects_limit():
+    results = NaverCategoryLookup.search("신발", limit=3)
+    assert len(results) <= 3
+
+
+def test_find_naver_category_code_tool_multiple_candidates():
+    res = find_naver_category_code.invoke({"keyword": "러닝화"})
+    assert "카테고리 후보 2건" in res
+    assert "category_code=50003854" in res
+    assert "category_code=50003835" in res
+
+
+def test_find_naver_category_code_tool_no_match():
+    res = find_naver_category_code.invoke({"keyword": "존재하지않는상품명xyz123"})
+    assert "찾지 못했습니다" in res
+
+
+def test_find_naver_category_code_guardrail_blocks_empty_keyword():
+    guard = NaverShoppingGuardrail()
+    result = guard.validate_tool_args("find_naver_category_code", {"keyword": ""})
+    assert result.passed is False
+    assert "keyword" in result.error_message
+
+
+def test_naver_shopping_context_mentions_category_lookup():
+    provider = NaverShoppingContextProvider()
+    snippet = provider.get_system_prompt_snippet()
+    assert "find_naver_category_code" in snippet
+    assert "추측하지" in snippet
 
 
 def test_naver_shopping_registry_discovery():

@@ -12,6 +12,7 @@ from src.config import settings
 from src.core.base import BaseAgentModule, BaseGuardrail, BaseContextProvider
 
 from .tools import (
+    find_naver_category_code,
     get_shopping_trends,
     get_shopping_category_trend,
     get_shopping_category_gender_trend,
@@ -39,6 +40,7 @@ class NaverShoppingModule(BaseAgentModule):
     def get_tools(self) -> List[BaseTool]:
         # [Tool 등록 영역] tools.py에서 새로 정의한 도구를 아래 리스트에 추가하시면 됩니다.
         return [
+            find_naver_category_code,
             get_shopping_trends,
             get_shopping_category_trend,
             get_shopping_category_gender_trend,
