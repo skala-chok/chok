@@ -235,7 +235,7 @@ with st.sidebar:
     st.subheader("🤖 LLM 모델 설정")
     model_name = st.text_input(
         "적용 LLM 모델명",
-        value=settings.MODEL_NAME or "gpt-5.6-luna",
+        value=settings.MODEL_NAME or "gpt-4o",
         help="에이전트 ReAct 루프 및 시나리오 리포트 생성에 사용되는 기본 언어 모델입니다.",
     )
     st.markdown(
@@ -465,6 +465,34 @@ with tab_tool:
 # ==============================================================================
 # 🎬 탭 2: 복합 시나리오 테스트 (Scenario Playground)
 # ==============================================================================
+def get_pydantic_field_default(f_info: Any, f_name: str = "") -> Any:
+    """Pydantic v2 필드 객체에서 실제 기본값을 안전하게 추출 (PydanticUndefined 방어)."""
+    from pydantic_core import PydanticUndefined
+    if f_info.default is not PydanticUndefined:
+        return f_info.default
+    if f_info.default_factory is not None:
+        try:
+            return f_info.default_factory()
+        except Exception:
+            pass
+    if "date" in f_name and "start" in f_name:
+        return "2026-01-01"
+    if "date" in f_name and "end" in f_name:
+        return "2026-03-01"
+    if "keyword" in f_name or "brand" in f_name:
+        return "성남 맛집"
+    return ""
+
+
+def is_list_field(f_info: Any) -> bool:
+    """필드의 타입 애너테이션이 List 또는 list 계열인지 판별."""
+    ann = getattr(f_info, "annotation", None)
+    if ann is None:
+        return False
+    origin = getattr(ann, "__origin__", None) or ann
+    return origin in (list, List) or "list" in str(ann).lower()
+
+
 with tab_scenario:
     st.subheader("🎬 복합 비즈니스 시나리오(Scenario) 파이프라인 검증")
     st.caption("복수의 도구를 유기적으로 체이닝하고 LLM으로 종합 분석 리포트를 생성하는 시나리오를 테스트합니다.")
@@ -498,17 +526,44 @@ with tab_scenario:
         for idx, (f_name, f_info) in enumerate(schema_fields.items()):
             col = s_cols[idx % len(s_cols)]
             f_desc = f_info.description or f_name
-            f_default = f_info.default
+            actual_default = get_pydantic_field_default(f_info, f_name)
+            field_is_list = is_list_field(f_info)
 
             with col:
-                if "date" in f_name and "start" in f_name:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}` (시작일)", value=str(f_default or "2026-01-01"), help=f_desc)
+                if field_is_list:
+                    if isinstance(actual_default, (list, tuple)):
+                        default_val = ", ".join(str(x) for x in actual_default)
+                    else:
+                        default_val = str(actual_default or "")
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (리스트, 쉼표 구분)",
+                        value=default_val,
+                        help=f"{f_desc} (여러 항목은 쉼표 ','로 구분하여 입력)",
+                    )
+                elif "date" in f_name and "start" in f_name:
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (시작일)",
+                        value=str(actual_default or "2026-01-01"),
+                        help=f_desc,
+                    )
                 elif "date" in f_name and "end" in f_name:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}` (종료일)", value=str(f_default or "2026-03-01"), help=f_desc)
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (종료일)",
+                        value=str(actual_default or "2026-03-01"),
+                        help=f_desc,
+                    )
                 elif "keyword" in f_name or "brand" in f_name:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}` (분석 대상)", value="러닝화", help=f_desc)
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}` (분석 대상)",
+                        value=str(actual_default or "성남 맛집"),
+                        help=f_desc,
+                    )
                 else:
-                    scen_param_values[f_name] = st.text_input(f"`{f_name}`", value=str(f_default or ""), help=f_desc)
+                    scen_param_values[f_name] = st.text_input(
+                        f"`{f_name}`",
+                        value=str(actual_default or ""),
+                        help=f_desc,
+                    )
 
         enable_llm_report = st.checkbox(
             f"🧠 LLM 종합 분석 리포트 생성 활성화 (적용 모델: `{model_name}`)",
@@ -523,7 +578,24 @@ with tab_scenario:
 
             # 1. Pydantic 유효성 검증
             try:
-                validated_params = schema_cls(**scen_param_values)
+                # 리스트 타입 필드에 대해 쉼표 구분 문자열을 리스트로 파싱
+                cleaned_inputs = {}
+                for k, v in scen_param_values.items():
+                    target_fi = schema_fields.get(k)
+                    if target_fi and is_list_field(target_fi) and isinstance(v, str):
+                        v_str = v.strip()
+                        if v_str.startswith("[") and v_str.endswith("]"):
+                            try:
+                                import json
+                                cleaned_inputs[k] = json.loads(v_str)
+                            except Exception:
+                                cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
+                        else:
+                            cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
+                    else:
+                        cleaned_inputs[k] = v
+
+                validated_params = schema_cls(**cleaned_inputs)
                 st.success(f"✅ [Step 1] 파라미터 유효성 검증 통과: `{validated_params}`")
             except Exception as e_param:
                 st.error(f"❌ [Step 1] 파라미터 스키마 검증 실패: {e_param}")
@@ -784,7 +856,9 @@ with tab_explorer:
                 fields = getattr(scen.parameters_schema, "model_fields", {})
                 st.markdown("• **파라미터 상세 규격**:")
                 for fn, fi in fields.items():
-                    st.markdown(f"  - `{fn}`: {fi.description or ''} (기본값: `{fi.default}`)")
+                    act_def = get_pydantic_field_default(fi, fn)
+                    def_str = repr(act_def) if act_def != "" else "(필수 입력)"
+                    st.markdown(f"  - `{fn}`: {fi.description or ''} (기본값: `{def_str}`)")
 
     st.markdown("---")
     st.markdown("#### 🏛️ 전체 실행 라이프사이클 다이어그램")

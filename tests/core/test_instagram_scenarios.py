@@ -300,3 +300,50 @@ class TestScenarioRegistryDiscovery:
         assert "hashtag_surge_detection" in all_names
         assert "competitor_campaign_tracking" in all_names
         assert "competitor_message_shift" in all_names
+
+
+class TestScenarioParameterCoercion:
+    """시나리오 파라미터 스키마의 문자열/리스트 유연한 파싱 및 PydanticUndefined 방어 검증."""
+
+    def test_hashtag_surge_detection_params_coercion(self):
+        # 1. PydanticUndefined 문자열 전달 시 기본값 리스트로 안전 복구
+        p1 = HashtagSurgeDetectionParams(compare_hashtags="PydanticUndefined")
+        assert p1.compare_hashtags == ["#성남 맛집", "#분당 맛집", "#판교 맛집"]
+
+        # 2. 쉼표 구분 문자열 전달 시 리스트로 자동 변환
+        p2 = HashtagSurgeDetectionParams(compare_hashtags="#강남 맛집, #서초 맛집, #송파 맛집")
+        assert p2.compare_hashtags == ["#강남 맛집", "#서초 맛집", "#송파 맛집"]
+
+        # 3. JSON 문자열 전달 시 정상 파싱
+        p3 = HashtagSurgeDetectionParams(compare_hashtags='["#판교맛집", "#분당맛집"]')
+        assert p3.compare_hashtags == ["#판교맛집", "#분당맛집"]
+
+        # 4. 일반 리스트 전달 시 정상 유지
+        p4 = HashtagSurgeDetectionParams(compare_hashtags=["#A", "#B"])
+        assert p4.compare_hashtags == ["#A", "#B"]
+
+        # 5. None 또는 빈 문자열 전달 시 기본값 유지
+        p5 = HashtagSurgeDetectionParams(compare_hashtags="")
+        assert p5.compare_hashtags == ["#성남 맛집", "#분당 맛집", "#판교 맛집"]
+
+    def test_competitor_campaign_tracking_params_coercion(self):
+        # 1. PydanticUndefined 문자열 전달 시 기본값 리스트로 안전 복구
+        p1 = CompetitorCampaignTrackingParams(competitor_usernames="PydanticUndefined")
+        assert p1.competitor_usernames == ["재슐랭가이드", "미식맨"]
+
+        # 2. 쉼표 구분 문자열 전달 시 리스트로 자동 변환
+        p2 = CompetitorCampaignTrackingParams(competitor_usernames="맛집탐정, 푸드파이터")
+        assert p2.competitor_usernames == ["맛집탐정", "푸드파이터"]
+
+        # 3. JSON 문자열 전달 시 정상 파싱
+        p3 = CompetitorCampaignTrackingParams(competitor_usernames='["user1", "user2"]')
+        assert p3.competitor_usernames == ["user1", "user2"]
+
+        # 4. 일반 리스트 전달 시 정상 유지
+        p4 = CompetitorCampaignTrackingParams(competitor_usernames=["user_a", "user_b"])
+        assert p4.competitor_usernames == ["user_a", "user_b"]
+
+        # 5. 빈 문자열 전달 시 기본값 유지
+        p5 = CompetitorCampaignTrackingParams(competitor_usernames="")
+        assert p5.competitor_usernames == ["재슐랭가이드", "미식맨"]
+

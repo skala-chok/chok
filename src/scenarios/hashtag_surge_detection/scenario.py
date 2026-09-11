@@ -8,7 +8,7 @@ import json
 import logging
 import re
 from typing import Any, Dict, List, Optional, Type
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from langchain_core.tools import BaseTool
 from langchain_core.prompts import ChatPromptTemplate
 from src.core.scenario import BaseScenario
@@ -30,6 +30,28 @@ class HashtagSurgeDetectionParams(BaseModel):
         default_factory=lambda: ["#성남 맛집", "#분당 맛집", "#판교 맛집"],
         description="비교 대상 해시태그 목록 (예: ['#성남 맛집', '#분당 맛집', '#판교 맛집'])",
     )
+
+    @field_validator("compare_hashtags", mode="before")
+    @classmethod
+    def parse_compare_hashtags(cls, v: Any) -> List[str]:
+        default_list = ["#성남 맛집", "#분당 맛집", "#판교 맛집"]
+        if v is None:
+            return default_list
+        if isinstance(v, str):
+            v_clean = v.strip()
+            if not v_clean or v_clean == "PydanticUndefined":
+                return default_list
+            if v_clean.startswith("[") and v_clean.endswith("]"):
+                try:
+                    loaded = json.loads(v_clean)
+                    if isinstance(loaded, list):
+                        return [str(x).strip() for x in loaded if str(x).strip()]
+                except Exception:
+                    pass
+            return [tag.strip() for tag in v_clean.split(",") if tag.strip()]
+        if isinstance(v, (list, tuple)):
+            return [str(tag).strip() for tag in v if str(tag).strip()]
+        return v
 
 
 class HashtagItemMetric(BaseModel):

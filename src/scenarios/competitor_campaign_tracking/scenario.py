@@ -9,7 +9,7 @@ import logging
 import re
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Type
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from langchain_core.tools import BaseTool
 from src.core.scenario import BaseScenario
 
@@ -30,6 +30,28 @@ class CompetitorCampaignTrackingParams(BaseModel):
         default="성남 맛집",
         description="타깃 주제/카테고리 (예: '성남 맛집')",
     )
+
+    @field_validator("competitor_usernames", mode="before")
+    @classmethod
+    def parse_competitor_usernames(cls, v: Any) -> List[str]:
+        default_list = ["재슐랭가이드", "미식맨"]
+        if v is None:
+            return default_list
+        if isinstance(v, str):
+            v_clean = v.strip()
+            if not v_clean or v_clean == "PydanticUndefined":
+                return default_list
+            if v_clean.startswith("[") and v_clean.endswith("]"):
+                try:
+                    loaded = json.loads(v_clean)
+                    if isinstance(loaded, list):
+                        return [str(x).strip() for x in loaded if str(x).strip()]
+                except Exception:
+                    pass
+            return [u.strip() for u in v_clean.split(",") if u.strip()]
+        if isinstance(v, (list, tuple)):
+            return [str(u).strip() for u in v if str(u).strip()]
+        return v
 
 
 class CompetitorStats(BaseModel):
