@@ -239,3 +239,32 @@ def test_category_code_resolution_falls_back_when_lookup_has_no_candidates():
     # 조회 실패 시 given_code를 그대로 쓰되, 신뢰할 수 없다는 경고가 남아야 한다.
     assert "검증하지 못했습니다" in result
     assert "50000000" in result
+
+
+def test_scenario_execution_does_not_pollute_global_state():
+    """시나리오 실행 시 모듈 전역 LAST_RUN_TOOL_RESULTS를 오염시키지 않는지 검증."""
+    from src.scenarios.naver_trend_analysis.scenario import (
+        LAST_RUN_TOOL_RESULTS,
+        TargetAudienceValidationParams,
+        TargetAudienceValidationScenario,
+    )
+
+    scenario = TargetAudienceValidationScenario()
+    tools = {
+        "find_naver_category_code": _lookup_tool("50000000"),
+        "get_shopping_category_gender_trend": _tool("[분야]\n  - 2026-01-01 (f): 100"),
+        "get_shopping_category_age_trend": _tool("[분야]\n  - 2026-01-01 (20): 100"),
+        "get_shopping_keyword_gender_trend": _tool("[키워드]\n  - 2026-01-01 (f): 100"),
+        "get_shopping_keyword_age_trend": _tool("[키워드]\n  - 2026-01-01 (20): 100"),
+    }
+    params = TargetAudienceValidationParams(
+        category_name="패션의류",
+        keyword="러닝화",
+        target_gender="여성",
+        target_age="20대",
+    )
+
+    scenario.execute(params, tools)
+
+    # 전역 dict에 잔여 상태가 남지 않아야 함 (세션/턴 간 누수 방지)
+    assert len(LAST_RUN_TOOL_RESULTS) == 0

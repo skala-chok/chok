@@ -36,7 +36,6 @@ from src.core.scenario import BaseScenario, ScenarioExecutionPlan
 from src.core.guardrails import wrap_tool_with_guardrails
 from src.core.router import ScenarioRouter
 from src.core.agent import AgentRunner
-from src.scenarios.naver_trend_analysis import scenario as naver_trend_scenario
 
 # 로거 설정
 logging.basicConfig(level=logging.INFO)
@@ -653,7 +652,7 @@ _GRID_GRAY = "#BFBFBF"
 _TREND_TITLE_RE = re.compile(r"^\[(.+?)\]$")
 _TREND_POINT_RE = re.compile(r"^\s*-\s*([\d-]+)(?:\s*\(([^)]+)\))?:\s*([\d.]+)\s*$")
 
-# naver_trend_analysis 도구 이름 -> 차트 제목 (원본 수치는 scenario.LAST_RUN_TOOL_RESULTS에서 읽음).
+# naver_trend_analysis 도구 이름 -> 차트 제목 (원본 수치는 도구 실행 콜백에서 수집된 chart_tool_results에서 읽음).
 _NAVER_TREND_TOOL_LABELS = {
     "get_shopping_category_trend": "분야 전체 트렌드 (쇼핑 영역)",
     "get_shopping_trends": "통합검색 기준 키워드 전체 관심도",
@@ -1125,9 +1124,8 @@ with tab_agent:
                                     callbacks=[cb_handler],
                                     on_status=log_status,
                                 )
-                                # 도구 실행 콜백에서 수집된 결과 및 기존 시나리오 전역 변수(하위 호환) 병합
-                                chart_tool_results = dict(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
-                                chart_tool_results.update(cb_handler.tool_results)
+                                # 이번 턴에 실제로 호출된 도구 결과만 차트 시각화에 반영 (전역 상태 누수 및 stale mock 차트 노출 방지)
+                                chart_tool_results = dict(cb_handler.tool_results)
                                 status_box.update(label=f"✅ 응답 생성 완료 (`{model_name}` - 도구/단계 {len(current_tool_logs)}건)", state="complete", expanded=False)
                                 real_msg = {
                                     "role": "assistant",
@@ -1393,9 +1391,8 @@ with tab_test:
                                 except Exception:
                                     st.code(json_part, language="json")
 
-                        combined_results = dict(getattr(naver_trend_scenario, "LAST_RUN_TOOL_RESULTS", {}))
-                        combined_results.update(scen_test_tool_results)
-                        _render_trend_charts(combined_results)
+                        # 이번 시나리오 실행에서 실제로 수집된 도구 결과만 시각화 (전역 상태 누수 방지)
+                        _render_trend_charts(scen_test_tool_results)
 
                     except Exception as e_scen:
                         progress_bar.empty()
