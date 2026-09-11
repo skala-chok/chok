@@ -467,150 +467,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_tool, tab_scenario, tab_agent, tab_explorer = st.tabs([
-    "🛠️ 단일 툴 테스트 (Tool Playground)",
-    "🎬 복합 시나리오 테스트 (Scenario Playground)",
-    "💬 통합 에이전트 대화 (Agent & Router)",
-    "📋 아키텍처 & 레지스트리 현황 (Explorer)",
-])
-
 
 # ==============================================================================
-# 🛠️ 탭 1: 단일 툴 테스트 (Tool Playground)
-# ==============================================================================
-with tab_tool:
-    st.subheader("🛠️ 개별 도구(@tool) 호출 및 가드레일 검증")
-    st.caption("모듈에 정의된 단일 도구를 선택하고, 매개변수를 입력하여 반환값과 입력/출력 가드레일 동작을 테스트합니다.")
-
-    # 1. 모듈 및 도구 선택
-    col_m1, col_m2 = st.columns([1, 1])
-    with col_m1:
-        selected_mod_name = st.selectbox(
-            "1. 테스트할 모듈 선택",
-            options=[m.name for m in all_mods],
-            format_func=lambda x: f"{x} ({mod_registry[x].description})",
-        )
-        selected_mod = mod_registry[selected_mod_name]
-
-    with col_m2:
-        mod_tools = selected_mod.get_tools()
-        selected_tool_name = st.selectbox(
-            "2. 테스트할 도구 선택",
-            options=[t.name for t in mod_tools],
-            format_func=lambda x: f"{x}",
-        )
-        raw_tool = next((t for t in mod_tools if t.name == selected_tool_name), None)
-
-    if raw_tool:
-        # 가드레일 래핑 적용
-        mod_guardrails = selected_mod.get_guardrails()
-        wrapped_tool = wrap_tool_with_guardrails(raw_tool, mod_guardrails)
-
-        # 도구 정보 안내 카드
-        with st.container():
-            st.markdown(f"**📖 설명**: `{raw_tool.description}`")
-            if mod_guardrails:
-                gr_names = [type(g).__name__ for g in mod_guardrails]
-                st.markdown(f"**🛡️ 적용된 가드레일**: `{', '.join(gr_names)}`")
-
-        st.markdown("---")
-        st.write("##### 📥 입력 파라미터 구성")
-
-        # 2. 도구의 인자 스키마에 따라 동적 입력 폼 렌더링
-        param_inputs = {}
-        tool_args = getattr(raw_tool, "args", {})
-
-        cols = st.columns(max(1, len(tool_args)))
-        for idx, (arg_name, arg_info) in enumerate(tool_args.items()):
-            col = cols[idx % len(cols)]
-            arg_type = arg_info.get("type", "string")
-            arg_desc = arg_info.get("description", arg_name)
-            arg_default = arg_info.get("default", None)
-
-            with col:
-                if arg_name == "sort" and ("sort" in raw_tool.name or "sort" in arg_name):
-                    param_inputs[arg_name] = st.selectbox(
-                        f"`{arg_name}`",
-                        options=["sim", "date", "asc", "dsc"] if "shopping" in raw_tool.name else ["sim", "date"],
-                        help=arg_desc,
-                    )
-                elif arg_type == "integer":
-                    default_int = int(arg_default) if arg_default is not None else (24 if "hour" in arg_name.lower() else 5)
-                    param_inputs[arg_name] = st.number_input(
-                        f"`{arg_name}` (숫자)",
-                        value=default_int,
-                        step=1,
-                        help=arg_desc,
-                    )
-                else:
-                    default_val = ""
-                    if "query" in arg_name or "keyword" in arg_name:
-                        default_val = "러닝화"
-                    elif "date" in arg_name and "start" in arg_name:
-                        default_val = "2026-01-01"
-                    elif "date" in arg_name and "end" in arg_name:
-                        default_val = "2026-02-01"
-                    elif "video_id" in arg_name:
-                        default_val = "dQw4w9WgXcQ"
-                    elif "channel_id" in arg_name:
-                        default_val = "UC_x5XG1OV2P6uZZ5FSM9Ttw"
-                    elif "hashtag_id" in arg_name:
-                        default_val = "17841400000000001"
-                    elif "username" in arg_name:
-                        default_val = "oliveyoung_official"
-
-                    param_inputs[arg_name] = st.text_input(
-                        f"`{arg_name}`",
-                        value=default_val,
-                        help=arg_desc,
-                    )
-
-        # 3. 도구 실행 버튼
-        run_col1, run_col2 = st.columns([1, 4])
-        with run_col1:
-            execute_tool_btn = st.button("🚀 도구 실행하기", type="primary", use_container_width=True)
-
-        if execute_tool_btn:
-            st.markdown("##### 📤 실행 결과")
-            start_t = time.time()
-
-            # 가드레일 입력 검증 사전 체크
-            guardrail_blocked = False
-            for gr in mod_guardrails:
-                # 쿼리형 문자열 인자가 있으면 사전 검사
-                for v in param_inputs.values():
-                    if isinstance(v, str):
-                        val_res = gr.validate_input(v)
-                        if not val_res.passed:
-                            guardrail_blocked = True
-                            st.error(f"🛑 **[입력 가드레일 차단]** {val_res.error_message}")
-                            break
-                if guardrail_blocked:
-                    break
-
-            if not guardrail_blocked:
-                with st.spinner("도구 실행 중..."):
-                    try:
-                        if use_mock_mode:
-                            output = execute_mock_tool(raw_tool.name, param_inputs)
-                        else:
-                            # 실제 도구 실행 (가드레일 적용)
-                            output = wrapped_tool.invoke(param_inputs)
-
-                        elapsed = time.time() - start_t
-                        st.success(f"✅ 실행 성공 (소요 시간: {elapsed:.3f}초)")
-                        if isinstance(output, (dict, list)):
-                            st.json(output)
-                        else:
-                            st.code(output, language="markdown")
-                    except Exception as e:
-                        elapsed = time.time() - start_t
-                        st.error(f"❌ 도구 실행 중 예외 발생 ({elapsed:.3f}초): {e}")
-                        st.caption("※ API 키가 미등록되었거나 만료된 경우, 사이드바에서 '🎭 Mock 모드'를 활성화해 보세요.")
-
-
-# ==============================================================================
-# 🎬 탭 2: 복합 시나리오 테스트 (Scenario Playground)
+# 🧩 헬퍼 함수, 시나리오 프리셋 및 도구 콜백 핸들러 정의
 # ==============================================================================
 def get_pydantic_field_default(f_info: Any, f_name: str = "") -> Any:
     """Pydantic v2 필드 객체에서 실제 기본값을 안전하게 추출 (PydanticUndefined 방어)."""
@@ -738,211 +597,7 @@ SCENARIO_PRESETS: Dict[str, Dict[str, Any]] = {
 }
 
 
-with tab_scenario:
-    st.subheader("🎬 복합 비즈니스 시나리오(Scenario) 파이프라인 검증")
-    st.caption("복수의 도구를 유기적으로 체이닝하고 LLM으로 종합 분석 리포트를 생성하는 시나리오를 테스트합니다.")
 
-    if not all_scens:
-        st.warning("등록된 시나리오가 없습니다. `src/scenarios/` 디렉토리를 확인하세요.")
-    else:
-        # 시나리오 선택
-        selected_scen_name = st.selectbox(
-            "실행할 시나리오 선택",
-            options=[s.name for s in all_scens],
-            format_func=lambda x: f"{x} - {scen_registry[x].description[:60]}...",
-        )
-        scenario: BaseScenario = scen_registry[selected_scen_name]
-
-        # 💡 추천 테스트 프리셋 카드
-        preset_info = SCENARIO_PRESETS.get(selected_scen_name)
-        if preset_info:
-            with st.container():
-                p_col1, p_col2 = st.columns([3, 1])
-                with p_col1:
-                    st.info(f"💡 **추천 테스트 시나리오 프리셋**: `{preset_info['label']}`\n\n> {preset_info.get('description', '')}")
-                with p_col2:
-                    if st.button("🔄 추천 프리셋 값 적용", key=f"apply_preset_{selected_scen_name}", use_container_width=True):
-                        for k, val in preset_info["params"].items():
-                            st.session_state[f"scen_field_{selected_scen_name}_{k}"] = str(val)
-                        st.rerun()
-
-        if selected_scen_name == "hashtag_surge_detection":
-            st.markdown(
-                """
-                <div class="info-card">
-                📸 <b>인스타그램 급상승 탐지 신규 업데이트 (hours_range & 24h Cap)</b><br>
-                • 🕒 <b>시간 범위(hours_range) 지정 지원</b>: 최근 N시간(기본 24h, 예: 6시간, 12시간) 윈도우 한정 필터링 및 참여도 재산정<br>
-                • 🛡️ <b>24시간 자동 캡(Cap) 적용</b>: Instagram Graph API 제약으로 24시간 초과 요청 시 최대 24시간으로 자동 캡 및 안내 고지<br>
-                • ⚖️ <b>표본 부족 방어</b>: 수집 게시물이 5건 미만일 경우 성급한 판정을 유보하고 <code>표본 부족</code> 안내 표시
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-        # 시나리오 메타데이터 카드
-        with st.container():
-            st.markdown(f"**📝 시나리오 설명**: {scenario.description}")
-            st.markdown(f"**🔗 연계 정예 도구 (`required_tool_names`)**: `{', '.join(scenario.required_tool_names)}`")
-            st.markdown(f"**📐 파라미터 스키마**: `{scenario.parameters_schema.__name__}`")
-
-        st.markdown("---")
-        st.write("##### 📥 시나리오 파라미터 설정")
-
-        # Pydantic 스키마 기반 필드 동적 생성
-        schema_cls: Type[BaseModel] = scenario.parameters_schema
-        schema_fields = getattr(schema_cls, "model_fields", {})
-
-        scen_param_values = {}
-        s_cols = st.columns(max(1, len(schema_fields)))
-        for idx, (f_name, f_info) in enumerate(schema_fields.items()):
-            col = s_cols[idx % len(s_cols)]
-            f_desc = f_info.description or f_name
-            actual_default = get_pydantic_field_default(f_info, f_name)
-            field_is_list = is_list_field(f_info)
-
-            # 세션 상태에 저장된 값이 없으면 프리셋 또는 기본값으로 초기화
-            field_key = f"scen_field_{selected_scen_name}_{f_name}"
-            preset_val = preset_info["params"].get(f_name) if preset_info else None
-
-            if field_key not in st.session_state:
-                if preset_val is not None:
-                    if isinstance(preset_val, (list, tuple)):
-                        st.session_state[field_key] = ", ".join(str(x) for x in preset_val)
-                    else:
-                        st.session_state[field_key] = str(preset_val)
-                elif field_is_list:
-                    if isinstance(actual_default, (list, tuple)):
-                        st.session_state[field_key] = ", ".join(str(x) for x in actual_default)
-                    else:
-                        st.session_state[field_key] = str(actual_default or "")
-                elif "date" in f_name and "start" in f_name:
-                    st.session_state[field_key] = str(actual_default or "2026-01-01")
-                elif "date" in f_name and "end" in f_name:
-                    st.session_state[field_key] = str(actual_default or "2026-03-31")
-                elif "keyword" in f_name or "brand" in f_name or "company" in f_name:
-                    st.session_state[field_key] = str(actual_default or "삼성전자")
-                else:
-                    st.session_state[field_key] = str(actual_default or "")
-
-            with col:
-                if field_is_list:
-                    scen_param_values[f_name] = st.text_input(
-                        f"`{f_name}` (리스트, 쉼표 구분)",
-                        key=field_key,
-                        help=f"{f_desc} (여러 항목은 쉼표 ','로 구분하여 입력)",
-                    )
-                else:
-                    scen_param_values[f_name] = st.text_input(
-                        f"`{f_name}`",
-                        key=field_key,
-                        help=f_desc,
-                    )
-
-        enable_llm_report = st.checkbox(
-            f"🧠 LLM 종합 분석 리포트 생성 활성화 (적용 모델: `{model_name}`)",
-            value=bool(openai_key) and not use_mock_mode,
-        )
-
-        run_scen_btn = st.button("🚀 시나리오 파이프라인 가동", type="primary")
-
-        if run_scen_btn:
-            st.markdown("---")
-            st.write("##### ⚙️ 파이프라인 실행 과정 및 결과")
-
-            # 1. Pydantic 유효성 검증
-            try:
-                # 리스트 타입 필드에 대해 쉼표 구분 문자열을 리스트로 파싱
-                cleaned_inputs = {}
-                for k, v in scen_param_values.items():
-                    target_fi = schema_fields.get(k)
-                    if target_fi and is_list_field(target_fi) and isinstance(v, str):
-                        v_str = v.strip()
-                        if v_str.startswith("[") and v_str.endswith("]"):
-                            try:
-                                import json
-                                cleaned_inputs[k] = json.loads(v_str)
-                            except Exception:
-                                cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
-                        else:
-                            cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
-                    else:
-                        cleaned_inputs[k] = v
-
-                validated_params = schema_cls(**cleaned_inputs)
-                st.success(f"✅ [Step 1] 파라미터 유효성 검증 통과: `{validated_params}`")
-            except Exception as e_param:
-                st.error(f"❌ [Step 1] 파라미터 스키마 검증 실패: {e_param}")
-                validated_params = None
-
-            if validated_params is not None:
-                # 2. 도구 주입 및 체이닝 시뮬레이션
-                progress_bar = st.progress(20, text="필수 도구 준비 중...")
-                time.sleep(0.2)
-
-                injected_tools: Dict[str, BaseTool] = {}
-                # 전체 등록 도구 맵 구축
-                all_tools_map = {}
-                for m in mod_registry.get_all_modules():
-                    for t in m.get_tools():
-                        all_tools_map[t.name] = wrap_tool_with_guardrails(t, m.get_guardrails())
-
-                for t_name in scenario.required_tool_names:
-                    if t_name in all_tools_map:
-                        injected_tools[t_name] = all_tools_map[t_name]
-
-                progress_bar.progress(50, text="정예 도구 체이닝 및 데이터 수집 중...")
-
-                # Mock 모드일 경우 각 도구를 Mocking하여 주입
-                if use_mock_mode:
-                    class MockToolWrapper:
-                        def __init__(self, name):
-                            self.name = name
-                        def invoke(self, args):
-                            return execute_mock_tool(self.name, args)
-
-                    mocked_injected_tools = {k: MockToolWrapper(k) for k in scenario.required_tool_names}
-                    injected_tools = mocked_injected_tools
-
-                # 3. LLM 컨텍스트 구성
-                llm_instance = None
-                if enable_llm_report and openai_key:
-                    llm_kwargs = {
-                        "model": model_name,
-                        "api_key": openai_key,
-                        "temperature": settings.TEMPERATURE,
-                    }
-                    if any(p in model_name for p in ("gpt-5", "o1", "o3")):
-                        llm_kwargs["reasoning_effort"] = "none"
-                    llm_instance = ChatOpenAI(**llm_kwargs)
-
-                context = {
-                    "llm": llm_instance,
-                    "query": f"{scen_param_values.get('keyword', '')} 트렌드 분석",
-                }
-
-                # 4. 시나리오 실행
-                try:
-                    start_scen = time.time()
-                    with st.spinner("시나리오 체이닝 실행 중..."):
-                        final_report = scenario.run(
-                            params=validated_params,
-                            tools=injected_tools,
-                            context=context,
-                        )
-                    elapsed_scen = time.time() - start_scen
-                    progress_bar.progress(100, text=f"완료! (소요 시간: {elapsed_scen:.2f}초)")
-
-                    st.markdown("### 📊 최종 시나리오 분석 리포트")
-                    st.markdown(final_report)
-
-                except Exception as e_scen:
-                    progress_bar.empty()
-                    st.error(f"❌ 시나리오 실행 실패: {e_scen}")
-
-
-# ==============================================================================
-# 💬 탭 3: 통합 에이전트 & 라우터 대화 (Agent & Router)
-# ==============================================================================
 from langchain_core.callbacks import BaseCallbackHandler
 
 
@@ -980,6 +635,19 @@ class StreamlitToolCallbackHandler(BaseCallbackHandler):
             self.log_store.append(msg)
 
 
+
+# ==============================================================================
+# 🗂️ 메인 탭 구성: AI 대화 (메인) & 기능/시나리오 테스트 (분리)
+# ==============================================================================
+tab_agent, tab_test = st.tabs([
+    "💬 통합 AI 에이전트 대화 (Agent Chat)",
+    "🧪 기능 및 시나리오 테스트 (Test Playground)",
+])
+
+
+# ==============================================================================
+# 💬 탭 1: 통합 AI 에이전트 대화 (Agent Chat)
+# ==============================================================================
 with tab_agent:
     # 1. 세션 대화 히스토리 초기화
     if "messages" not in st.session_state:
@@ -1305,80 +973,354 @@ with tab_agent:
                                 })
 
 
+
+
 # ==============================================================================
-# 📋 탭 4: 아키텍처 & 레지스트리 현황 (Explorer)
-# ==============================================================================
-with tab_explorer:
-    st.subheader("📋 시스템 아키텍처 및 레지스트리 탐색기")
-    st.caption("프로젝트의 전체 모듈, 도구, 가드레일, 시나리오의 등록 상태와 코드 구조를 확인합니다.")
+# 🧪 탭 2: 기능 및 시나리오 테스트 (Test Playground)
+# ============================================================================== 
+with tab_test:
+    subtab_scenario, subtab_tool = st.tabs([
+        "🎬 복합 시나리오 테스트 (Scenario Playground)",
+        "🛠️ 단일 툴 테스트 (Tool Playground)",
+    ])
 
-    st.markdown(
-        f'<div class="info-card">'
-        f'🧠 <b>현재 적용 LLM 모델</b>: <code>{model_name}</code> &nbsp;|&nbsp; '
-        f'🌡️ <b>Temperature</b>: <code>{settings.TEMPERATURE}</code> &nbsp;|&nbsp; '
-        f'📦 <b>등록 모듈</b>: <code>{len(all_mods)}개</code> &nbsp;|&nbsp; '
-        f'🎬 <b>등록 시나리오</b>: <code>{len(all_scens)}개</code>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    # --------------------------------------------------------------------------
+    # 🎬 서브탭 1: 복합 시나리오 테스트
+    # --------------------------------------------------------------------------
+    with subtab_scenario:
+        st.subheader("🎬 복합 비즈니스 시나리오(Scenario) 파이프라인 검증")
+        st.caption("복수의 도구를 유기적으로 체이닝하고 LLM으로 종합 분석 리포트를 생성하는 시나리오를 테스트합니다.")
 
-    exp_col1, exp_col2 = st.columns(2)
+        if not all_scens:
+            st.warning("등록된 시나리오가 없습니다. `src/scenarios/` 디렉토리를 확인하세요.")
+        else:
+            # 시나리오 선택
+            selected_scen_name = st.selectbox(
+                "실행할 시나리오 선택",
+                options=[s.name for s in all_scens],
+                format_func=lambda x: f"{x} - {scen_registry[x].description[:60]}...",
+            )
+            scenario: BaseScenario = scen_registry[selected_scen_name]
 
-    with exp_col1:
-        st.markdown("#### 📦 등록된 도메인 모듈 (`src.modules`)")
-        for mod in all_mods:
-            with st.expander(f"🔹 **{mod.name}** - {mod.description}", expanded=True):
-                tools = mod.get_tools()
-                guardrails = mod.get_guardrails()
-                ctx = mod.get_context_provider()
+            # 💡 추천 테스트 프리셋 카드
+            preset_info = SCENARIO_PRESETS.get(selected_scen_name)
+            if preset_info:
+                with st.container():
+                    p_col1, p_col2 = st.columns([3, 1])
+                    with p_col1:
+                        st.info(f"💡 **추천 테스트 시나리오 프리셋**: `{preset_info['label']}`\n\n> {preset_info.get('description', '')}")
+                    with p_col2:
+                        if st.button("🔄 추천 프리셋 값 적용", key=f"apply_preset_{selected_scen_name}", use_container_width=True):
+                            for k, val in preset_info["params"].items():
+                                st.session_state[f"scen_field_{selected_scen_name}_{k}"] = str(val)
+                            st.rerun()
 
-                st.markdown(f"• **보유 도구 ({len(tools)}개)**:")
-                for t in tools:
-                    st.markdown(f"  - `{t.name}`: {t.description}")
+            if selected_scen_name == "hashtag_surge_detection":
+                st.markdown(
+                    """
+                    <div class="info-card">
+                    📸 <b>인스타그램 급상승 탐지 신규 업데이트 (hours_range & 24h Cap)</b><br>
+                    • 🕒 <b>시간 범위(hours_range) 지정 지원</b>: 최근 N시간(기본 24h, 예: 6시간, 12시간) 윈도우 한정 필터링 및 참여도 재산정<br>
+                    • 🛡️ <b>24시간 자동 캡(Cap) 적용</b>: Instagram Graph API 제약으로 24시간 초과 요청 시 최대 24시간으로 자동 캡 및 안내 고지<br>
+                    • ⚖️ <b>표본 부족 방어</b>: 수집 게시물이 5건 미만일 경우 성급한 판정을 유보하고 <code>표본 부족</code> 안내 표시
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
 
-                if guardrails:
-                    st.markdown(f"• **가드레일 ({len(guardrails)}개)**:")
-                    for g in guardrails:
-                        st.markdown(f"  - `{type(g).__name__}`")
+            # 시나리오 메타데이터 카드
+            with st.container():
+                st.markdown(f"**📝 시나리오 설명**: {scenario.description}")
+                st.markdown(f"**🔗 연계 정예 도구 (`required_tool_names`)**: `{', '.join(scenario.required_tool_names)}`")
+                st.markdown(f"**📐 파라미터 스키마**: `{scenario.parameters_schema.__name__}`")
 
-                if ctx:
-                    st.markdown("• **시스템 프롬프트 지침 snippet**:")
-                    st.caption(ctx.get_system_prompt_snippet() or "(없음)")
+            st.markdown("---")
+            st.write("##### 📥 시나리오 파라미터 설정")
 
-    with exp_col2:
-        st.markdown("#### 🎬 등록된 비즈니스 시나리오 (`src.scenarios`)")
-        for scen in all_scens:
-            with st.expander(f"🔸 **{scen.name}**", expanded=True):
-                st.markdown(f"• **상세 설명**: {scen.description}")
-                st.markdown(f"• **필수 도구 의존성**: `{', '.join(scen.required_tool_names)}`")
-                st.markdown(f"• **파라미터 모델**: `{scen.parameters_schema.__name__}`")
-                
-                # 스키마 필드 표시
-                fields = getattr(scen.parameters_schema, "model_fields", {})
-                st.markdown("• **파라미터 상세 규격**:")
-                for fn, fi in fields.items():
-                    act_def = get_pydantic_field_default(fi, fn)
-                    def_str = repr(act_def) if act_def != "" else "(필수 입력)"
-                    st.markdown(f"  - `{fn}`: {fi.description or ''} (기본값: `{def_str}`)")
+            # Pydantic 스키마 기반 필드 동적 생성
+            schema_cls: Type[BaseModel] = scenario.parameters_schema
+            schema_fields = getattr(schema_cls, "model_fields", {})
 
-    st.markdown("---")
-    st.markdown("#### 🏛️ 전체 실행 라이프사이클 다이어그램")
-    st.markdown(
-        """
-        ```mermaid
-        flowchart TD
-            UserQuery["사용자 입력 (Query)"] --> InputGuardrail{"입력 가드레일 검사"}
-            InputGuardrail -->|정책 위반| Blocked["🛑 에러 메시지 반환"]
-            InputGuardrail -->|통과| Router{"시나리오 라우터\n(Confidence >= 0.6)"}
-            
-            Router -->|시나리오 매칭| ScenarioPipeline["🎬 시나리오 체인 실행\n(CrossPlatformTrendScenario 등)"]
-            ScenarioPipeline --> ScenarioTools["정예 Tool 순차/병렬 실행\n(가드레일 자동 래핑)"]
-            ScenarioTools --> Synthesis["LLM 종합 리포트 생성"]
-            Synthesis --> FinalResponse["사용자 최종 응답"]
-            
-            Router -->|매칭 실패/일반 질의| ReActAgent["🤖 ReAct 범용 에이전트\n(AgentExecutor)"]
-            ReActAgent --> ModuleRegistryTools["전체 활성 모듈 도구 호출"]
-            ModuleRegistryTools --> FinalResponse
-        ```
-        """
-    )
+            scen_param_values = {}
+            s_cols = st.columns(max(1, len(schema_fields)))
+            for idx, (f_name, f_info) in enumerate(schema_fields.items()):
+                col = s_cols[idx % len(s_cols)]
+                f_desc = f_info.description or f_name
+                actual_default = get_pydantic_field_default(f_info, f_name)
+                field_is_list = is_list_field(f_info)
+
+                # 세션 상태에 저장된 값이 없으면 프리셋 또는 기본값으로 초기화
+                field_key = f"scen_field_{selected_scen_name}_{f_name}"
+                preset_val = preset_info["params"].get(f_name) if preset_info else None
+
+                if field_key not in st.session_state:
+                    if preset_val is not None:
+                        if isinstance(preset_val, (list, tuple)):
+                            st.session_state[field_key] = ", ".join(str(x) for x in preset_val)
+                        else:
+                            st.session_state[field_key] = str(preset_val)
+                    elif field_is_list:
+                        if isinstance(actual_default, (list, tuple)):
+                            st.session_state[field_key] = ", ".join(str(x) for x in actual_default)
+                        else:
+                            st.session_state[field_key] = str(actual_default or "")
+                    elif "date" in f_name and "start" in f_name:
+                        st.session_state[field_key] = str(actual_default or "2026-01-01")
+                    elif "date" in f_name and "end" in f_name:
+                        st.session_state[field_key] = str(actual_default or "2026-03-31")
+                    elif "keyword" in f_name or "brand" in f_name or "company" in f_name:
+                        st.session_state[field_key] = str(actual_default or "삼성전자")
+                    else:
+                        st.session_state[field_key] = str(actual_default or "")
+
+                with col:
+                    if field_is_list:
+                        scen_param_values[f_name] = st.text_input(
+                            f"`{f_name}` (리스트, 쉼표 구분)",
+                            key=field_key,
+                            help=f"{f_desc} (여러 항목은 쉼표 ','로 구분하여 입력)",
+                        )
+                    else:
+                        scen_param_values[f_name] = st.text_input(
+                            f"`{f_name}`",
+                            key=field_key,
+                            help=f_desc,
+                        )
+
+            enable_llm_report = st.checkbox(
+                f"🧠 LLM 종합 분석 리포트 생성 활성화 (적용 모델: `{model_name}`)",
+                value=bool(openai_key) and not use_mock_mode,
+            )
+
+            run_scen_btn = st.button("🚀 시나리오 파이프라인 가동", type="primary")
+
+            if run_scen_btn:
+                st.markdown("---")
+                st.write("##### ⚙️ 파이프라인 실행 과정 및 결과")
+
+                # 1. Pydantic 유효성 검증
+                try:
+                    # 리스트 타입 필드에 대해 쉼표 구분 문자열을 리스트로 파싱
+                    cleaned_inputs = {}
+                    for k, v in scen_param_values.items():
+                        target_fi = schema_fields.get(k)
+                        if target_fi and is_list_field(target_fi) and isinstance(v, str):
+                            v_str = v.strip()
+                            if v_str.startswith("[") and v_str.endswith("]"):
+                                try:
+                                    import json
+                                    cleaned_inputs[k] = json.loads(v_str)
+                                except Exception:
+                                    cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
+                            else:
+                                cleaned_inputs[k] = [x.strip() for x in v_str.split(",") if x.strip()]
+                        else:
+                            cleaned_inputs[k] = v
+
+                    validated_params = schema_cls(**cleaned_inputs)
+                    st.success(f"✅ [Step 1] 파라미터 유효성 검증 통과: `{validated_params}`")
+                except Exception as e_param:
+                    st.error(f"❌ [Step 1] 파라미터 스키마 검증 실패: {e_param}")
+                    validated_params = None
+
+                if validated_params is not None:
+                    # 2. 도구 주입 및 체이닝 시뮬레이션
+                    progress_bar = st.progress(20, text="필수 도구 준비 중...")
+                    time.sleep(0.2)
+
+                    injected_tools: Dict[str, BaseTool] = {}
+                    # 전체 등록 도구 맵 구축
+                    all_tools_map = {}
+                    for m in mod_registry.get_all_modules():
+                        for t in m.get_tools():
+                            all_tools_map[t.name] = wrap_tool_with_guardrails(t, m.get_guardrails())
+
+                    for t_name in scenario.required_tool_names:
+                        if t_name in all_tools_map:
+                            injected_tools[t_name] = all_tools_map[t_name]
+
+                    progress_bar.progress(50, text="정예 도구 체이닝 및 데이터 수집 중...")
+
+                    # Mock 모드일 경우 각 도구를 Mocking하여 주입
+                    if use_mock_mode:
+                        class MockToolWrapper:
+                            def __init__(self, name):
+                                self.name = name
+                            def invoke(self, args):
+                                return execute_mock_tool(self.name, args)
+
+                        mocked_injected_tools = {k: MockToolWrapper(k) for k in scenario.required_tool_names}
+                        injected_tools = mocked_injected_tools
+
+                    # 3. LLM 컨텍스트 구성
+                    llm_instance = None
+                    if enable_llm_report and openai_key:
+                        llm_kwargs = {
+                            "model": model_name,
+                            "api_key": openai_key,
+                            "temperature": settings.TEMPERATURE,
+                        }
+                        if any(p in model_name for p in ("gpt-5", "o1", "o3")):
+                            llm_kwargs["reasoning_effort"] = "none"
+                        llm_instance = ChatOpenAI(**llm_kwargs)
+
+                    context = {
+                        "llm": llm_instance,
+                        "query": f"{scen_param_values.get('keyword', '')} 트렌드 분석",
+                    }
+
+                    # 4. 시나리오 실행
+                    try:
+                        start_scen = time.time()
+                        with st.spinner("시나리오 체이닝 실행 중..."):
+                            final_report = scenario.run(
+                                params=validated_params,
+                                tools=injected_tools,
+                                context=context,
+                            )
+                        elapsed_scen = time.time() - start_scen
+                        progress_bar.progress(100, text=f"완료! (소요 시간: {elapsed_scen:.2f}초)")
+
+                        st.markdown("### 📊 최종 시나리오 분석 리포트")
+                        st.markdown(final_report)
+
+                    except Exception as e_scen:
+                        progress_bar.empty()
+                        st.error(f"❌ 시나리오 실행 실패: {e_scen}")
+
+
+
+    # --------------------------------------------------------------------------
+    # 🛠️ 서브탭 2: 단일 툴 테스트
+    # --------------------------------------------------------------------------
+    with subtab_tool:
+        st.subheader("🛠️ 개별 도구(@tool) 호출 및 가드레일 검증")
+        st.caption("모듈에 정의된 단일 도구를 선택하고, 매개변수를 입력하여 반환값과 입력/출력 가드레일 동작을 테스트합니다.")
+
+        # 1. 모듈 및 도구 선택
+        col_m1, col_m2 = st.columns([1, 1])
+        with col_m1:
+            selected_mod_name = st.selectbox(
+                "1. 테스트할 모듈 선택",
+                options=[m.name for m in all_mods],
+                format_func=lambda x: f"{x} ({mod_registry[x].description})",
+            )
+            selected_mod = mod_registry[selected_mod_name]
+
+        with col_m2:
+            mod_tools = selected_mod.get_tools()
+            selected_tool_name = st.selectbox(
+                "2. 테스트할 도구 선택",
+                options=[t.name for t in mod_tools],
+                format_func=lambda x: f"{x}",
+            )
+            raw_tool = next((t for t in mod_tools if t.name == selected_tool_name), None)
+
+        if raw_tool:
+            # 가드레일 래핑 적용
+            mod_guardrails = selected_mod.get_guardrails()
+            wrapped_tool = wrap_tool_with_guardrails(raw_tool, mod_guardrails)
+
+            # 도구 정보 안내 카드
+            with st.container():
+                st.markdown(f"**📖 설명**: `{raw_tool.description}`")
+                if mod_guardrails:
+                    gr_names = [type(g).__name__ for g in mod_guardrails]
+                    st.markdown(f"**🛡️ 적용된 가드레일**: `{', '.join(gr_names)}`")
+
+            st.markdown("---")
+            st.write("##### 📥 입력 파라미터 구성")
+
+            # 2. 도구의 인자 스키마에 따라 동적 입력 폼 렌더링
+            param_inputs = {}
+            tool_args = getattr(raw_tool, "args", {})
+
+            cols = st.columns(max(1, len(tool_args)))
+            for idx, (arg_name, arg_info) in enumerate(tool_args.items()):
+                col = cols[idx % len(cols)]
+                arg_type = arg_info.get("type", "string")
+                arg_desc = arg_info.get("description", arg_name)
+                arg_default = arg_info.get("default", None)
+
+                with col:
+                    if arg_name == "sort" and ("sort" in raw_tool.name or "sort" in arg_name):
+                        param_inputs[arg_name] = st.selectbox(
+                            f"`{arg_name}`",
+                            options=["sim", "date", "asc", "dsc"] if "shopping" in raw_tool.name else ["sim", "date"],
+                            help=arg_desc,
+                        )
+                    elif arg_type == "integer":
+                        default_int = int(arg_default) if arg_default is not None else (24 if "hour" in arg_name.lower() else 5)
+                        param_inputs[arg_name] = st.number_input(
+                            f"`{arg_name}` (숫자)",
+                            value=default_int,
+                            step=1,
+                            help=arg_desc,
+                        )
+                    else:
+                        default_val = ""
+                        if "query" in arg_name or "keyword" in arg_name:
+                            default_val = "러닝화"
+                        elif "date" in arg_name and "start" in arg_name:
+                            default_val = "2026-01-01"
+                        elif "date" in arg_name and "end" in arg_name:
+                            default_val = "2026-02-01"
+                        elif "video_id" in arg_name:
+                            default_val = "dQw4w9WgXcQ"
+                        elif "channel_id" in arg_name:
+                            default_val = "UC_x5XG1OV2P6uZZ5FSM9Ttw"
+                        elif "hashtag_id" in arg_name:
+                            default_val = "17841400000000001"
+                        elif "username" in arg_name:
+                            default_val = "oliveyoung_official"
+
+                        param_inputs[arg_name] = st.text_input(
+                            f"`{arg_name}`",
+                            value=default_val,
+                            help=arg_desc,
+                        )
+
+            # 3. 도구 실행 버튼
+            run_col1, run_col2 = st.columns([1, 4])
+            with run_col1:
+                execute_tool_btn = st.button("🚀 도구 실행하기", type="primary", use_container_width=True)
+
+            if execute_tool_btn:
+                st.markdown("##### 📤 실행 결과")
+                start_t = time.time()
+
+                # 가드레일 입력 검증 사전 체크
+                guardrail_blocked = False
+                for gr in mod_guardrails:
+                    # 쿼리형 문자열 인자가 있으면 사전 검사
+                    for v in param_inputs.values():
+                        if isinstance(v, str):
+                            val_res = gr.validate_input(v)
+                            if not val_res.passed:
+                                guardrail_blocked = True
+                                st.error(f"🛑 **[입력 가드레일 차단]** {val_res.error_message}")
+                                break
+                    if guardrail_blocked:
+                        break
+
+                if not guardrail_blocked:
+                    with st.spinner("도구 실행 중..."):
+                        try:
+                            if use_mock_mode:
+                                output = execute_mock_tool(raw_tool.name, param_inputs)
+                            else:
+                                # 실제 도구 실행 (가드레일 적용)
+                                output = wrapped_tool.invoke(param_inputs)
+
+                            elapsed = time.time() - start_t
+                            st.success(f"✅ 실행 성공 (소요 시간: {elapsed:.3f}초)")
+                            if isinstance(output, (dict, list)):
+                                st.json(output)
+                            else:
+                                st.code(output, language="markdown")
+                        except Exception as e:
+                            elapsed = time.time() - start_t
+                            st.error(f"❌ 도구 실행 중 예외 발생 ({elapsed:.3f}초): {e}")
+                            st.caption("※ API 키가 미등록되었거나 만료된 경우, 사이드바에서 '🎭 Mock 모드'를 활성화해 보세요.")
+
+
