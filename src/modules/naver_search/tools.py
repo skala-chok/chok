@@ -13,7 +13,17 @@ client = NaverSearchClient()
 
 @tool
 def search_naver_blog(query: str, display: int = 5, sort: str = "sim") -> str:
-    """Search Naver blogs for reviews, tutorials, and personal experiences. sort can be 'sim' or 'date'."""
+    """네이버 블로그에서 실사용 후기, 튜토리얼, 개인 경험담을 검색합니다.
+
+    Args:
+        query: 검색할 핵심 키워드.
+        display: 반환할 결과 개수 (1~10, 기본값 5).
+        sort: 정렬 방식. 'sim'(정확도순) 또는 'date'(최신순).
+
+    Returns:
+        검색 결과 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
+    """
     try:
         data = client.search_blog(query=query, display=display, sort=sort)
         items = data.get("items", [])
@@ -29,7 +39,17 @@ def search_naver_blog(query: str, display: int = 5, sort: str = "sim") -> str:
 
 @tool
 def search_naver_news(query: str, display: int = 5, sort: str = "sim") -> str:
-    """Search Naver News for latest press articles and breaking news. sort can be 'sim' or 'date'."""
+    """네이버 뉴스에서 최신 보도 기사와 속보를 검색합니다.
+
+    Args:
+        query: 검색할 핵심 키워드.
+        display: 반환할 결과 개수 (1~10, 기본값 5).
+        sort: 정렬 방식. 'sim'(정확도순) 또는 'date'(최신순).
+
+    Returns:
+        검색 결과 요약 문자열. OpenAPI 호출이 실패하면 클라이언트가 폴백(Fallback Mock)
+        데이터를 반환하며, 그 외 예외 발생 시 오류 메시지 문자열을 반환합니다.
+    """
     try:
         data = client.search_news(query=query, display=display, sort=sort)
         items = data.get("items", [])
