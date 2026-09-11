@@ -21,6 +21,16 @@
 - `tests/modules/` 및 `tests/core/`의 모든 단위/통합 테스트는 외부 인터넷 연결 없이 1~2초 내에 완료되어야 합니다.
 - 실제 외부 API 키나 네트워크 호출 없이 `unittest.mock.patch` 및 `ToolCallingFakeChat`을 활용해 100% 격리된 환경에서 검증되어야 합니다.
 
+### 🌿 [Rule 1-3] 브랜치 전략 및 Main 병합 보호 하네스 룰 (Branch Protection & Merge Governance) (CRITICAL)
+`main` 브랜치는 실제 프로덕션 릴리스 전용 브랜치이므로 엄격한 병합 거버넌스를 준수해야 합니다:
+1. **단일 병합 경로 원칙 (Only from `dev`)**:
+   - `main` 브랜치로의 병합(PR 및 Merge)은 **오직 `dev` 브랜치를 통해서만 가능**합니다.
+   - 개별 작업 브랜치(`feat/*`, `fix/*` 등)에서 `main`으로 직접 PR을 생성하거나 직접 병합하는 행위를 엄격히 금지합니다.
+2. **최소 2인 이상 승인 필수 (2 Reviewer Approvals Required)**:
+   - `dev -> main` PR을 병합하기 위해서는 **반드시 최소 2명 이상의 동료 개발자/코드 리뷰어의 정식 승인(`Approve`)**이 있어야만 병합할 수 있습니다. (1인 승인 또는 승인 없는 강제 병합 원천 차단)
+3. **전체 테스트 스위트 통과 필수**:
+   - `main` 병합 전 100% Mocking 단위/통합 테스트(`pytest tests/modules/ tests/core/ tests/test_integration.py`)가 전건 통과해야 합니다.
+
 ---
 
 ## 🏗️ 2. 아키텍처 및 코드 작성 규칙 (Architecture & Code Rules)

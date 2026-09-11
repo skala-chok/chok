@@ -1,0 +1,82 @@
+name: Main Branch Protection & Review Policy
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+jobs:
+  verify-merge-policy:
+    name: Verify Base 'main' Merge Policy
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.base.ref == 'main' || (github.event.review && github.event.pull_request.base.ref == 'main')
+    steps:
+      - name: 1. Check Source Branch (Must be 'dev')
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const headRef = context.payload.pull_request.head.ref;
+            core.info(`PR Head Branch: ${headRef}`);
+            if (headRef !== 'dev') {
+              core.setFailed(`🚨 [Branch Policy Violation] main 브랜치로의 PR은 오직 'dev' 브랜치에서만 병합할 수 있습니다. (현재 요청 브랜치: '${headRef}')`);
+            } else {
+              core.info(`✅ Head 브랜치 검증 성공: 'dev' 브랜치로부터의 요청입니다.`);
+            }
+
+      - name: 2. Check 2+ Approvals Required
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const prNumber = context.payload.pull_request.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const reviews = await github.rest.pulls.listReviews({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            // 각 리뷰어별 최신 리뷰 상태 집계
+            const latestReviews = {};
+            for (const review of reviews.data) {
+              latestReviews[review.user.login] = review.state;
+            }
+
+            const approvals = Object.entries(latestReviews).filter(([user, state]) => state === 'APPROVED');
+            const approvalCount = approvals.length;
+            const approvedUsers = approvals.map(([user]) => `@${user}`).join(', ');
+
+            core.info(`현재 승인한 리뷰어 (${approvalCount}명): ${approvedUsers || '없음'}`);
+
+            if (approvalCount < 2) {
+              core.setFailed(`🚨 [Review Policy Violation] main 브랜치 병합을 위해서는 최소 2명 이상의 리뷰어 승인(Approval)이 필요합니다. (현재 승인 수: ${approvalCount}/2)`);
+            } else {
+              core.info(`✅ 리뷰어 승인 요건 충족: ${approvalCount}명의 승인이 확인되었습니다.`);
+            }
+
+  run-tests:
+    name: Run Harness & Unit Tests
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.base.ref == 'main'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Unit & Integration Tests (100% Mock)
+        run: |
+          pytest tests/modules/ tests/core/ tests/test_config.py tests/test_integration.py -q

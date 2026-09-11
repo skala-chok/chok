@@ -509,6 +509,16 @@ class CompetitorAnalysisScenario(BaseScenario):
 | **Worker 2** | `src/modules/yt_analytics` | YouTube 통계/댓글 | `get_channel_stats`<br>`get_video_comments` | • `max_comments` (1~50) 제한<br>• 댓글 내 이메일/전화번호(PII) 마스킹 정제 |
 | **Worker 3** | `src/modules/naver_search` | 네이버 블로그/뉴스 | `search_naver_blog`<br>`search_naver_news` | • `display` (1~10), `sort` ('sim'/'date') 검증<br>• 응답 내 HTML 태그(`<b>` 등) 제거 |
 | **Worker 4** | `src/modules/naver_shopping` | 네이버 쇼핑 데이터랩 트렌드 | `get_shopping_trends`<br>`get_shopping_category_trend`<br>`get_shopping_category_gender_trend`<br>`get_shopping_category_age_trend`<br>`get_shopping_keyword_trend`<br>`get_shopping_keyword_gender_trend`<br>`get_shopping_keyword_age_trend` | • 날짜(YYYY-MM-DD) 형식 및 범위(2017-08-01~) 검증<br>• 분야 최대 3개 / 키워드 최대 5개 제한<br>• `time_unit` 값 검증 |
+| **Worker 5** | `src/modules/instagram` | 인스타그램 그래프 API | `search_hashtag_id`<br>`get_hashtag_recent_media`<br>`get_hashtag_top_media`<br>`get_competitor_profile` | • 해시태그 특수문자 정제<br>• target_username 및 ID 유효성 사전 검증<br>• 캡션 내 이메일/전화번호 마스킹 |
+
+### Git 브랜치 전략 및 Main 병합 보호 룰 (Branch Protection Rules)
+1. **단일 병합 경로 (Only from `dev`)**:
+   - `main` 브랜치는 프로덕션 배포 전용 브랜치입니다.
+   - `main` 브랜치로의 병합은 **오직 `dev` 브랜치를 통해서만 가능**하며, 개별 피처 브랜치(`feat/*`, `fix/*` 등)에서 `main`으로 직접 생성된 PR이나 직접 푸시는 원천 차단됩니다.
+2. **2인 이상 승인 필수 (2 Reviewer Approvals Required)**:
+   - `dev ➔ main` PR을 병합하려면 **반드시 최소 2명 이상의 동료 리뷰어 승인(Approval)**을 받아야 합니다.
+3. **CI/테스트 100% 통과 필수**:
+   - 병합 전 100% Mock 격리 단위/통합 테스트(`pytest tests/modules/ tests/core/`) 전건 통과가 필수입니다.
 
 ### Git 무충돌(Zero Merge Conflict) 원칙
 1. **코어 동결 (Core Freeze)**: `src/core/` 디렉토리는 허가 없이 수정하지 않습니다.

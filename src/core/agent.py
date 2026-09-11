@@ -74,11 +74,14 @@ class AgentRunner:
         if llm is not None:
             self.llm = llm
         else:
-            self.llm = ChatOpenAI(
-                model=settings.MODEL_NAME,
-                api_key=settings.OPENAI_API_KEY or "dummy-key",
-                temperature=settings.TEMPERATURE,
-            )
+            llm_kwargs: Dict[str, Any] = {
+                "model": settings.MODEL_NAME,
+                "api_key": settings.OPENAI_API_KEY or "dummy-key",
+                "temperature": settings.TEMPERATURE,
+            }
+            if any(p in settings.MODEL_NAME for p in ("gpt-5", "o1", "o3")):
+                llm_kwargs["reasoning_effort"] = "none"
+            self.llm = ChatOpenAI(**llm_kwargs)
 
         # Assemble Scenario Registry & Router
         if scenario_registry is not None:

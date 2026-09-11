@@ -50,11 +50,14 @@ class ScenarioRouter:
         if llm is not None:
             self.llm = llm
         else:
-            self.llm = ChatOpenAI(
-                model=settings.MODEL_NAME,
-                api_key=settings.OPENAI_API_KEY or "dummy-key",
-                temperature=0.0,
-            )
+            llm_kwargs: Dict[str, Any] = {
+                "model": settings.MODEL_NAME,
+                "api_key": settings.OPENAI_API_KEY or "dummy-key",
+                "temperature": 0.0,
+            }
+            if any(p in settings.MODEL_NAME for p in ("gpt-5", "o1", "o3")):
+                llm_kwargs["reasoning_effort"] = "none"
+            self.llm = ChatOpenAI(**llm_kwargs)
 
     def _build_scenario_catalog(self) -> str:
         """등록된 시나리오들의 이름, 설명, 파라미터 필드 정보를 텍스트 카탈로그로 조합합니다."""
@@ -112,7 +115,7 @@ class ScenarioRouter:
         start_route = time.time()
         logger.debug("[시나리오 라우팅 분석 시작] 질의: '%s'", query)
         try:
-            structured_llm = self.llm.with_structured_output(ScenarioRoutingDecision)
+            structured_llm = self.llm.with_structured_output(ScenarioRoutingDecision, method="function_calling")
             chain = prompt | structured_llm
             decision: ScenarioRoutingDecision = chain.invoke({
                 "catalog": catalog_text,

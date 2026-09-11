@@ -668,11 +668,14 @@ with tab_scenario:
                 # 3. LLM 컨텍스트 구성
                 llm_instance = None
                 if enable_llm_report and openai_key:
-                    llm_instance = ChatOpenAI(
-                        model=model_name,
-                        api_key=openai_key,
-                        temperature=settings.TEMPERATURE,
-                    )
+                    llm_kwargs = {
+                        "model": model_name,
+                        "api_key": openai_key,
+                        "temperature": settings.TEMPERATURE,
+                    }
+                    if any(p in model_name for p in ("gpt-5", "o1", "o3")):
+                        llm_kwargs["reasoning_effort"] = "none"
+                    llm_instance = ChatOpenAI(**llm_kwargs)
 
                 context = {
                     "llm": llm_instance,
@@ -881,11 +884,14 @@ with tab_agent:
                     else:
                         # 실제 AgentRunner 가동
                         try:
-                            custom_llm = ChatOpenAI(
-                                model=model_name,
-                                api_key=openai_key or settings.OPENAI_API_KEY,
-                                temperature=settings.TEMPERATURE,
-                            )
+                            llm_kwargs = {
+                                "model": model_name,
+                                "api_key": openai_key or settings.OPENAI_API_KEY,
+                                "temperature": settings.TEMPERATURE,
+                            }
+                            if any(p in model_name for p in ("gpt-5", "o1", "o3")):
+                                llm_kwargs["reasoning_effort"] = "none"
+                            custom_llm = ChatOpenAI(**llm_kwargs)
                             runner = AgentRunner(
                                 registry=mod_registry,
                                 scenario_registry=scen_registry,
