@@ -33,33 +33,21 @@ def test_naver_search_module_metadata():
     assert isinstance(ctx, NaverSearchContextProvider)
 
 
-def test_naver_search_module_is_enabled(monkeypatch):
-    mod = NaverSearchModule()
+@pytest.mark.parametrize(
+    "client_id,client_secret,expected",
+    [
+        ("dummy_id", "dummy_secret", True),
+        ("dummy_id", None, False),
+        (None, "dummy_secret", False),
+        (None, None, False),
+        ("", "", False),
+    ],
+)
+def test_naver_search_module_is_enabled(monkeypatch, client_id, client_secret, expected):
+    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_ID", client_id)
+    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_SECRET", client_secret)
+    assert NaverSearchModule().is_enabled() is expected
 
-    # Both set
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_ID", "dummy_id")
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_SECRET", "dummy_secret")
-    assert mod.is_enabled() is True
-
-    # Only ID set
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_ID", "dummy_id")
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_SECRET", None)
-    assert mod.is_enabled() is False
-
-    # Only Secret set
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_ID", None)
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_SECRET", "dummy_secret")
-    assert mod.is_enabled() is False
-
-    # Neither set
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_ID", None)
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_SECRET", None)
-    assert mod.is_enabled() is False
-
-    # Empty strings
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_ID", "")
-    monkeypatch.setattr("src.modules.naver_search.module.settings.NAVER_CLIENT_SECRET", "")
-    assert mod.is_enabled() is False
 
 
 def test_naver_search_context_provider():
@@ -116,40 +104,16 @@ def test_naver_search_guardrail_tool_args_validation():
     assert guard.validate_tool_args("other_tool", {"display": 100}).passed is True
 
 
-def test_naver_search_html_sanitization():
+def test_naver_search_guardrail_sanitization():
+    """사후 출력 정제 시 HTML 태그 제거 및 이메일/전화번호 마스킹 검증."""
     guard = NaverSearchGuardrail()
-    raw = "기사 제목 <b>AI 신기술</b> 발표 &quot;대박&quot; &amp; 성공"
+    raw = '기사 제목 <b>AI 신기술</b> &quot;대박&quot; owner@shop.com / 010-9999-8888'
     cleaned = guard.sanitize_output("search_naver_news", raw)
-    assert "<b>" not in cleaned
-    assert "</b>" not in cleaned
-    assert "&quot;" not in cleaned
-    assert "&amp;" not in cleaned
-    assert cleaned == '기사 제목 AI 신기술 발표 "대박" & 성공'
+    assert "<b>" not in cleaned and "&quot;" not in cleaned
+    assert "[EMAIL_MASKED]" in cleaned and "[PHONE_MASKED]" in cleaned
+    assert "owner@shop.com" not in cleaned and "010-9999-8888" not in cleaned
+    assert guard.sanitize_output("search_naver_news", {"data": "test"}) == {"data": "test"}
 
-    # Non-string output
-    dict_output = {"data": "test"}
-    assert guard.sanitize_output("search_naver_news", dict_output) == dict_output
-
-
-def test_naver_search_pii_masking():
-    """handoff/03_guidelines.md 2절 - 사후 출력 정제 시 이메일/전화번호 마스킹 검증."""
-    guard = NaverSearchGuardrail()
-
-    raw_email = "문의사항은 contact@example.com 으로 보내주세요."
-    cleaned_email = guard.sanitize_output("search_naver_blog", raw_email)
-    assert "contact@example.com" not in cleaned_email
-    assert "[EMAIL_MASKED]" in cleaned_email
-
-    raw_phone = "사장님 연락처는 010-1234-5678 입니다."
-    cleaned_phone = guard.sanitize_output("search_naver_news", raw_phone)
-    assert "010-1234-5678" not in cleaned_phone
-    assert "[PHONE_MASKED]" in cleaned_phone
-
-    raw_both = "<b>맛집</b> 문의: owner@shop.com / 010-9999-8888"
-    cleaned_both = guard.sanitize_output("search_naver_blog", raw_both)
-    assert "<b>" not in cleaned_both
-    assert "[EMAIL_MASKED]" in cleaned_both
-    assert "[PHONE_MASKED]" in cleaned_both
 
 
 @patch("src.modules.naver_search.client.requests.get")

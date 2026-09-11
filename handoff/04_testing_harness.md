@@ -23,7 +23,7 @@ graph TD
         UT_Core["Core Unit Tests<br>(tests/core/test_*.py)"]
         UT_Mod["Module Unit Tests<br>(tests/modules/test_*.py)"]
         IT["Integration Tests<br>(tests/test_integration.py)"]
-        Live["Live API Tests<br>(tests/api_test.py)"]
+        Live["Live API Diagnostics<br>(scripts/api_diagnostics.py)"]
     end
 
     subgraph Test Harness Fixtures
@@ -195,6 +195,7 @@ def test_naver_blog_search_openapi_failure_fallback():
 # 3. 전체 모듈 단위 및 코어 테스트 일괄 실행 (회귀 방지 필수)
 ./venv/bin/pytest tests/modules/ tests/core/ -q
 
-# 4. (선택) 라이브 API 연동 테스트 (실제 API 키 필요 시)
-./venv/bin/pytest tests/api_test.py -v
+# 4. (선택) 라이브 API 진단 스크립트 실행 (실제 API 키 유효성 점검 시)
+python scripts/api_diagnostics.py
 ```
+

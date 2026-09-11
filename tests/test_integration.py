@@ -8,12 +8,7 @@ from src.core.registry import ModuleRegistry
 from src.core.agent import AgentRunner
 from src.core.scenario_registry import ScenarioRegistry
 from src.core.scenario import ScenarioExecutionPlan
-
-
-class ToolCallingFakeChat(FakeMessagesListChatModel):
-    """Fake chat model that supports bind_tools for tool calling testing."""
-    def bind_tools(self, tools, **kwargs):
-        return self
+from tests.conftest import ToolCallingFakeChat
 
 
 def test_full_registry_discovery():

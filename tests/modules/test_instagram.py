@@ -40,23 +40,21 @@ class TestInstagramModuleMetadata:
         assert isinstance(ctx, InstagramContextProvider)
         assert "search_hashtag_id" in ctx.get_system_prompt_snippet()
 
-    def test_module_is_enabled(self, monkeypatch):
-        mod = InstagramModule()
+    @pytest.mark.parametrize(
+        "token,user_id,expected",
+        [
+            ("token_123", "user_123", True),
+            ("token_123", None, False),
+            (None, "user_123", False),
+            (None, None, False),
+            ("", "", False),
+        ],
+    )
+    def test_module_is_enabled(self, monkeypatch, token, user_id, expected):
+        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_ACCESS_TOKEN", token)
+        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_USER_ID", user_id)
+        assert InstagramModule().is_enabled() is expected
 
-        # Both set
-        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_ACCESS_TOKEN", "token_123")
-        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_USER_ID", "user_123")
-        assert mod.is_enabled() is True
-
-        # Only token set
-        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_ACCESS_TOKEN", "token_123")
-        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_USER_ID", None)
-        assert mod.is_enabled() is False
-
-        # Neither set
-        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_ACCESS_TOKEN", None)
-        monkeypatch.setattr("src.modules.instagram.module.settings.INSTAGRAM_USER_ID", None)
-        assert mod.is_enabled() is False
 
 
 class TestInstagramClientMock:

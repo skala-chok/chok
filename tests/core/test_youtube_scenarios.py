@@ -6,11 +6,7 @@ from src.scenarios.youtube_competitor_analysis.scenario import (
     CompetitorStrategyScenario, PaidPromotionParams, PaidPromotionScenario,
 )
 
-
-def _tool(result: str) -> MagicMock:
-    tool = MagicMock()
-    tool.invoke.return_value = result
-    return tool
+from tests.conftest import make_tool_mock as _tool
 
 
 def test_competitor_comparison_calls_tools_twice_per_company():

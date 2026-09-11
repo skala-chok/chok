@@ -102,10 +102,12 @@ skala-chok/
 │   │   └── naver_shopping/          # 네이버 쇼핑 데이터랩 트렌드 (분야/키워드 x 전체/성별/연령)
 │   └── scenarios/                   # 🚀 2. 복합 시나리오 개발 영역 (Tool 체이닝)
 │       └── cross_platform_trend/    # [예시] 네이버 트렌드 + 유튜브 크로스 분석 시나리오
-└── tests/                           # 테스트 스위트 (100% Mock 격리)
+├── scripts/                         # 진단 및 유틸리티 스크립트 (api_diagnostics.py 등)
+└── tests/                           # 테스트 스위트 (100% Mock 격리, 1~2초 실행)
     ├── core/                        # 코어 및 시나리오 단위 테스트
     ├── modules/                     # 모듈별 단위 테스트
-    └── api_test.py                  # 19개 API 엔드포인트 명세 및 라이브 검증 테스트
+    └── test_integration.py          # 전체 통합 파이프라인 테스트
+
 ```
 
 ---
