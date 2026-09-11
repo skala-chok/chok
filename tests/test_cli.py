@@ -78,3 +78,43 @@ def test_main_cli_setup_logging_level():
                 with patch("src.main.setup_logging") as mock_setup:
                     src.main.main()
                     mock_setup.assert_called_once_with("DEBUG")
+
+
+def test_main_cli_mock_mode(capsys):
+    test_args = ["main.py", "--query", "러닝화 트렌드 분석해줘", "--mock"]
+    with patch.object(sys, "argv", test_args):
+        with patch.object(src.main.AgentRunner, "run", return_value="[Mock 답변] 트렌드 분석 결과"):
+            src.main.main()
+
+    captured = capsys.readouterr().out
+    assert "Mock 모드 동작 중" in captured
+    assert "[질의]: 러닝화 트렌드 분석해줘" in captured
+    assert "[Mock 답변] 트렌드 분석 결과" in captured
+
+
+def test_main_cli_mock_runner_factory():
+    from src.core.registry import ModuleRegistry
+    from src.main import _create_mock_runner
+
+    reg = ModuleRegistry()
+    runner = _create_mock_runner(reg)
+    assert runner is not None
+    assert runner.router is not None
+    # Check mock router routing branches
+    plan1 = runner.router.route("성남맛집 인스타 해시태그")
+    assert plan1.scenario_name == "hashtag_surge_detection"
+
+    plan2 = runner.router.route("경쟁사 캠페인 분석")
+    assert plan2.scenario_name == "competitor_campaign_tracking"
+
+    plan3 = runner.router.route("소구점 메시지 변화")
+    assert plan3.scenario_name == "competitor_message_shift"
+
+    plan4 = runner.router.route("유튜브 채널 분석")
+    assert plan4.scenario_name == "youtube_competitor_comparison"
+
+    plan5 = runner.router.route("성별 연령 타겟 검증")
+    assert plan5.scenario_name == "naver_target_audience_validation"
+
+    plan6 = runner.router.route("러닝화 트렌드")
+    assert plan6.scenario_name == "cross_platform_trend"

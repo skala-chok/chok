@@ -13,16 +13,14 @@ _CANDIDATE_CODE_RE = re.compile(r"category_code=(\d+)")
 
 _GENDER_KR = {"m": "남성", "f": "여성"}
 
-# 차트용 원본 도구 결과: app.py가 실행 직후 읽어가며, 매 execute() 시작 시 초기화된다.
+# 하위 호환용 빈 딕셔너리 (Deprecated: 도구 실행 결과는 AgentRunner callbacks를 통해 격리 수집됨)
 LAST_RUN_TOOL_RESULTS: Dict[str, str] = {}
 
 
 def _run(tools: Dict[str, BaseTool], name: str, **kwargs: Any) -> str:
     tool = tools.get(name)
     result = tool.invoke(kwargs) if tool else f"{name} 도구를 사용할 수 없습니다."
-    if isinstance(result, str):
-        LAST_RUN_TOOL_RESULTS[name] = result
-    return result
+    return result if isinstance(result, str) else str(result)
 
 
 def _resolve_category_code(tools: Dict[str, BaseTool], search_term: str, given_code: str) -> Tuple[str, Optional[str]]:
@@ -416,7 +414,6 @@ class NewProductKeywordTrendScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        LAST_RUN_TOOL_RESULTS.clear()
         kw_list = [k.strip() for k in params.keywords.split(",") if k.strip()]
         search_term = _pick_search_term(params.category_name, *kw_list)
         display_name = params.category_name or search_term or "(분야 미지정)"
@@ -511,7 +508,6 @@ class TargetAudienceValidationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        LAST_RUN_TOOL_RESULTS.clear()
         search_term = _pick_search_term(params.category_name, params.keyword)
         display_name = params.category_name or search_term or "(분야 미지정)"
 
@@ -601,7 +597,6 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        LAST_RUN_TOOL_RESULTS.clear()
         kw = params.keyword.strip() if params.keyword else ""
         category_code, code_note, err = _resolve_category_or_error(
             tools, kw, params.category_code,
