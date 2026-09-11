@@ -9,11 +9,43 @@ from src.core.scenario import BaseScenario
 
 _TITLE_RE = re.compile(r"^\[(.+?)\]$")
 _POINT_RE = re.compile(r"^\s*-\s*([\d-]+)(?:\s*\(([^)]+)\))?:\s*([\d.]+)\s*$")
+_CANDIDATE_CODE_RE = re.compile(r"category_code=(\d+)")
 
 
 def _run(tools: Dict[str, BaseTool], name: str, **kwargs: Any) -> str:
     tool = tools.get(name)
     return tool.invoke(kwargs) if tool else f"{name} 도구를 사용할 수 없습니다."
+
+
+def _resolve_category_code(tools: Dict[str, BaseTool], search_term: str, given_code: str) -> Tuple[str, Optional[str]]:
+    """라우터(LLM)가 추측한 category_code를 find_naver_category_code로 실제 검증/정정한다.
+
+    라우터는 Tool 호출 없이 파라미터를 직접 추측하기 때문에, Pydantic Field의 예시 숫자를
+    그대로 베끼거나 존재하지 않는 코드를 만들어내는 경우가 있다. 이 함수는 그 값을 절대
+    그대로 신뢰하지 않고, search_term(분야명 또는 키워드)으로 실제 후보를 다시 조회해서
+    given_code가 그 후보에 없으면 조회된 코드로 교체한다.
+
+    Returns:
+        (사용할 category_code, 정정/실패 시 사용자에게 보여줄 안내 문구 또는 None).
+    """
+    raw = _run(tools, "find_naver_category_code", keyword=search_term)
+    candidates = _CANDIDATE_CODE_RE.findall(raw)
+    if not candidates:
+        note = (
+            f"⚠️ '{search_term}'에 대한 category_code를 자동 조회로 검증하지 못했습니다 "
+            f"(조회 결과 없음). 제공된 코드({given_code or '없음'})를 그대로 사용하며, 정확하지 않을 수 있습니다."
+        )
+        return given_code, note
+    if given_code and given_code in candidates:
+        return given_code, None
+    corrected = candidates[0]
+    if given_code:
+        note = f"⚠️ category_code 자동 정정: 추정된 코드({given_code})는 '{search_term}'의 실제 카테고리와 일치하지 않아 조회된 코드({corrected})로 교체했습니다."
+    else:
+        note = f"ℹ️ category_code가 주어지지 않아 '{search_term}' 키워드로 자동 조회한 코드({corrected})를 사용합니다."
+    if len(candidates) > 1:
+        note += f" (다른 후보: {', '.join(candidates[1:])})"
+    return corrected, note
 
 
 def _parse_series(text: str) -> Dict[str, List[Tuple[str, Optional[str], float]]]:
@@ -70,7 +102,13 @@ def _default_end() -> str:
 
 class NewProductKeywordTrendParams(BaseModel):
     category_name: str = Field(description="네이버쇼핑 분야명 (예: '스킨/토너')")
-    category_code: str = Field(description="네이버쇼핑 분야 코드 (예: '50000167')")
+    category_code: str = Field(
+        default="",
+        description=(
+            "네이버쇼핑 분야 코드. 정확한 숫자를 모르면 절대 추측해서 채우지 말고 빈 문자열로 두십시오 "
+            "(시나리오 실행 시 category_name으로 자동 조회·검증됩니다)."
+        ),
+    )
     keywords: str = Field(description="비교할 세부 키워드, 쉼표로 구분 (예: '수분스킨,저자극스킨,맨즈스킨'), 최대 5개")
     start_date: str = Field(default_factory=_default_start, description="분석 시작일, YYYY-MM-DD (기본: 최근 3개월)")
     end_date: str = Field(default_factory=_default_end, description="분석 종료일, YYYY-MM-DD")
@@ -93,7 +131,12 @@ class NewProductKeywordTrendScenario(BaseScenario):
 
     @property
     def required_tool_names(self) -> List[str]:
-        return ["get_shopping_category_trend", "get_shopping_trends", "get_shopping_keyword_trend"]
+        return [
+            "find_naver_category_code",
+            "get_shopping_category_trend",
+            "get_shopping_trends",
+            "get_shopping_keyword_trend",
+        ]
 
     def execute(
         self,
@@ -101,7 +144,9 @@ class NewProductKeywordTrendScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
-        category_arg = f"{params.category_name}:{params.category_code}"
+        category_code, code_note = _resolve_category_code(tools, params.category_name, params.category_code)
+
+        category_arg = f"{params.category_name}:{category_code}"
         category_result = _run(
             tools, "get_shopping_category_trend",
             categories=category_arg, start_date=params.start_date, end_date=params.end_date,
@@ -116,7 +161,7 @@ class NewProductKeywordTrendScenario(BaseScenario):
         kw_pairs = ",".join(f"{kw}:{kw}" for kw in kw_list)
         keyword_result = _run(
             tools, "get_shopping_keyword_trend",
-            category_code=params.category_code, keywords=kw_pairs,
+            category_code=category_code, keywords=kw_pairs,
             start_date=params.start_date, end_date=params.end_date,
         )
 
@@ -124,9 +169,11 @@ class NewProductKeywordTrendScenario(BaseScenario):
         direction_lines = [f"- {title}: {_trend_direction(points)}" for title, points in keyword_series.items()]
         direction_summary = "\n".join(direction_lines) if direction_lines else "- 판단 불가 (데이터 없음)"
 
+        note_block = f"{code_note}\n\n" if code_note else ""
         return (
             f"### [{params.category_name}] 신제품 키워드 트렌드 조사\n"
-            f"기간: {params.start_date} ~ {params.end_date}\n\n"
+            f"{note_block}"
+            f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
             f"#### 1. 분야 전체 트렌드 (쇼핑 영역)\n{category_result}\n\n"
             f"#### 2. 통합검색 기준 키워드 전체 관심도\n{overall_result}\n\n"
             f"#### 3. 쇼핑 영역 기준 세부 키워드 비교\n{keyword_result}\n\n"
@@ -138,7 +185,13 @@ class NewProductKeywordTrendScenario(BaseScenario):
 
 class TargetAudienceValidationParams(BaseModel):
     category_name: str = Field(description="네이버쇼핑 분야명 (예: '스킨/토너')")
-    category_code: str = Field(description="네이버쇼핑 분야 코드")
+    category_code: str = Field(
+        default="",
+        description=(
+            "네이버쇼핑 분야 코드. 정확한 숫자를 모르면 절대 추측해서 채우지 말고 빈 문자열로 두십시오 "
+            "(시나리오 실행 시 category_name으로 자동 조회·검증됩니다)."
+        ),
+    )
     keyword: str = Field(description="검증할 대표 키워드 (예: '수분스킨')")
     target_gender: str = Field(description="설정한 타겟 성별. 'm'(남성) 또는 'f'(여성)")
     target_age: str = Field(description="설정한 타겟 연령대. '10'~'60' 중 하나")
@@ -164,6 +217,7 @@ class TargetAudienceValidationScenario(BaseScenario):
     @property
     def required_tool_names(self) -> List[str]:
         return [
+            "find_naver_category_code",
             "get_shopping_category_gender_trend",
             "get_shopping_category_age_trend",
             "get_shopping_keyword_gender_trend",
@@ -176,12 +230,13 @@ class TargetAudienceValidationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
+        category_code, code_note = _resolve_category_code(tools, params.category_name, params.category_code)
         date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
 
-        category_gender = _run(tools, "get_shopping_category_gender_trend", category_code=params.category_code, **date_kwargs)
-        category_age = _run(tools, "get_shopping_category_age_trend", category_code=params.category_code, **date_kwargs)
-        keyword_gender = _run(tools, "get_shopping_keyword_gender_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
-        keyword_age = _run(tools, "get_shopping_keyword_age_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
+        category_gender = _run(tools, "get_shopping_category_gender_trend", category_code=category_code, **date_kwargs)
+        category_age = _run(tools, "get_shopping_category_age_trend", category_code=category_code, **date_kwargs)
+        keyword_gender = _run(tools, "get_shopping_keyword_gender_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
+        keyword_age = _run(tools, "get_shopping_keyword_age_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
 
         checks = []
         for label, raw_text, target in (
@@ -203,10 +258,12 @@ class TargetAudienceValidationScenario(BaseScenario):
             else:
                 checks.append(f"- {label}: ⚠️ 실제 최고 관심 세그먼트는 '{top[0]}'(ratio {top[1]})이나, 설정한 타겟은 '{target}'이라 불일치")
 
+        note_block = f"{code_note}\n\n" if code_note else ""
         return (
             f"### [{params.category_name} / {params.keyword}] 타겟 오디언스 검증\n"
+            f"{note_block}"
             f"설정한 타겟: 성별={params.target_gender}, 연령대={params.target_age}\n"
-            f"기간: {params.start_date} ~ {params.end_date}\n\n"
+            f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
             f"#### 1. 분야 전체 성별 트렌드\n{category_gender}\n\n"
             f"#### 2. 분야 전체 연령별 트렌드\n{category_age}\n\n"
             f"#### 3. '{params.keyword}' 키워드 성별 트렌드\n{keyword_gender}\n\n"
@@ -218,7 +275,13 @@ class TargetAudienceValidationScenario(BaseScenario):
 
 
 class KeywordAudienceSegmentationParams(BaseModel):
-    category_code: str = Field(description="네이버쇼핑 분야 코드")
+    category_code: str = Field(
+        default="",
+        description=(
+            "네이버쇼핑 분야 코드. 정확한 숫자를 모르면 절대 추측해서 채우지 말고 빈 문자열로 두십시오 "
+            "(시나리오 실행 시 keyword로 자동 조회·검증됩니다)."
+        ),
+    )
     keyword: str = Field(description="분포를 확인할 검색 키워드")
     start_date: str = Field(default_factory=_default_start, description="분석 시작일, YYYY-MM-DD (기본: 최근 3개월)")
     end_date: str = Field(default_factory=_default_end, description="분석 종료일, YYYY-MM-DD")
@@ -241,7 +304,7 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
 
     @property
     def required_tool_names(self) -> List[str]:
-        return ["get_shopping_keyword_gender_trend", "get_shopping_keyword_age_trend"]
+        return ["find_naver_category_code", "get_shopping_keyword_gender_trend", "get_shopping_keyword_age_trend"]
 
     def execute(
         self,
@@ -249,9 +312,10 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
         tools: Dict[str, BaseTool],
         context: Optional[Dict[str, Any]] = None,
     ) -> str:
+        category_code, code_note = _resolve_category_code(tools, params.keyword, params.category_code)
         date_kwargs = {"start_date": params.start_date, "end_date": params.end_date}
-        gender_result = _run(tools, "get_shopping_keyword_gender_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
-        age_result = _run(tools, "get_shopping_keyword_age_trend", category_code=params.category_code, keyword=params.keyword, **date_kwargs)
+        gender_result = _run(tools, "get_shopping_keyword_gender_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
+        age_result = _run(tools, "get_shopping_keyword_age_trend", category_code=category_code, keyword=params.keyword, **date_kwargs)
 
         gender_top = None
         for points in _parse_series(gender_result).values():
@@ -268,9 +332,11 @@ class KeywordAudienceSegmentationScenario(BaseScenario):
         gender_line = f"- 가장 관심도 높은 성별: {gender_top[0]} (ratio {gender_top[1]})" if gender_top else "- 판단 불가 (데이터 없음)"
         age_line = f"- 가장 관심도 높은 연령대: {age_top[0]}대 (ratio {age_top[1]})" if age_top else "- 판단 불가 (데이터 없음)"
 
+        note_block = f"{code_note}\n\n" if code_note else ""
         return (
             f"### '{params.keyword}' 키워드 타겟팅 세분화\n"
-            f"기간: {params.start_date} ~ {params.end_date}\n\n"
+            f"{note_block}"
+            f"기간: {params.start_date} ~ {params.end_date} | 사용된 category_code: {category_code}\n\n"
             f"#### 1. 성별 분포\n{gender_result}\n\n"
             f"#### 2. 연령대별 분포\n{age_result}\n\n"
             f"#### 3. 요약\n{gender_line}\n{age_line}\n\n"
