@@ -76,6 +76,9 @@ class NaverShoppingGuardrail(BaseGuardrail):
         if tool_name in ("get_shopping_keyword_gender_trend", "get_shopping_keyword_age_trend"):
             if not str(args.get("keyword", "")).strip():
                 return GuardrailResult(passed=False, error_message="keyword가 비어 있습니다.")
+        if tool_name == "find_naver_category_code":
+            if not str(args.get("keyword", "")).strip():
+                return GuardrailResult(passed=False, error_message="keyword가 비어 있습니다.")
         return GuardrailResult(passed=True)
 
     def sanitize_output(self, tool_name: str, output: Any) -> Any:

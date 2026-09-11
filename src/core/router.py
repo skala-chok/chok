@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from datetime import date
 from typing import Any, Dict, Optional
 from pydantic import BaseModel, Field
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -100,6 +101,7 @@ class ScenarioRouter:
             (
                 "system",
                 "당신은 사용자의 요청을 분석하여 사전에 등록된 최적의 전문 시나리오를 판별하는 지능형 라우터입니다.\n\n"
+                "오늘 날짜(YYYY-MM-DD): {today}\n\n"
                 "아래는 사용 가능한 전문 시나리오 카탈로그입니다:\n"
                 "----------------------------------------\n"
                 "{catalog}\n"
@@ -107,7 +109,9 @@ class ScenarioRouter:
                 "[판단 가이드라인]\n"
                 "1. 사용자의 요청이 특정 시나리오의 목적 및 요구 파라미터와 명확히 일치할 때만 해당 scenario_name을 선택하십시오.\n"
                 "2. 단순 인사, 일반 지식 질문, 또는 어떤 시나리오에도 명확히 부합하지 않는 요청은 반드시 scenario_name을 null로 지정하고 confidence를 낮추십시오.\n"
-                "3. 시나리오를 선택한 경우 질의에서 파라미터를 정확히 추출하여 parameters에 담으십시오.",
+                "3. 시나리오를 선택한 경우 질의에서 파라미터를 정확히 추출하여 parameters에 담으십시오.\n"
+                "4. 날짜 파라미터를 추출할 때 '최근 N개월', '지난달', '올해' 같은 상대적 기간 표현은 "
+                "반드시 위에 명시된 오늘 날짜를 기준으로 계산하십시오. 임의의 다른 연도를 가정하지 마십시오.",
             ),
             ("human", "사용자 요청: {query}"),
         ])
@@ -120,6 +124,7 @@ class ScenarioRouter:
             decision: ScenarioRoutingDecision = chain.invoke({
                 "catalog": catalog_text,
                 "query": query,
+                "today": date.today().isoformat(),
             })
             route_elapsed = time.time() - start_route
             logger.debug("[시나리오 라우팅 분석 완료] 소요시간: %.2fs", route_elapsed)

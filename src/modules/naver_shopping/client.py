@@ -4,7 +4,9 @@
 # ➔ 다음 단계: 🟠 [Step 2] guardrails.py 로 이동하여 0원 상품 필터링 등 가드레일을 작성하세요.
 # ==============================================================================
 
+import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -12,6 +14,54 @@ import requests
 from src.config import settings
 
 logger = logging.getLogger(__name__)
+
+_CATEGORY_DATA_PATH = Path(__file__).resolve().parent / "data" / "naver_category_codes.json"
+
+
+class NaverCategoryLookup:
+    """네이버쇼핑 전체 카테고리 코드(대/중/소/세분류)를 로컬 JSON에서 검색하는 조회기.
+
+    외부 API가 아니라 사전에 다운로드해둔 정적 카테고리 목록(5,002건)을 사용한다.
+    사용자가 category_code를 직접 몰라도 "러닝화"처럼 자연어 키워드로 후보를 찾을 수 있게 한다.
+    """
+
+    _cache: Optional[List[Dict[str, Any]]] = None
+
+    @classmethod
+    def _load(cls) -> List[Dict[str, Any]]:
+        if cls._cache is None:
+            with open(_CATEGORY_DATA_PATH, encoding="utf-8") as f:
+                cls._cache = json.load(f)
+        return cls._cache
+
+    @classmethod
+    def search(cls, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """키워드를 세분류(가장 구체적인 분류)부터 대분류 순으로 매칭해 후보를 반환한다.
+
+        Args:
+            keyword: 검색할 상품/분야 키워드 (예: "러닝화").
+            limit: 반환할 최대 후보 수.
+
+        Returns:
+            [{"code": str, "path": "대분류 > 중분류 > 소분류 > 세분류"}, ...].
+            세분류(가장 구체적인 단계) 완전일치를 최우선으로, 그다음 부분일치 순으로 정렬한다.
+        """
+        keyword = keyword.strip()
+        if not keyword:
+            return []
+
+        records = cls._load()
+        exact_leaf, partial = [], []
+        for rec in records:
+            names = rec["names"]
+            leaf = names[-1] if names else ""
+            if leaf == keyword:
+                exact_leaf.append(rec)
+            elif any(keyword in name for name in names):
+                partial.append(rec)
+
+        ordered = exact_leaf + partial
+        return [{"code": rec["code"], "path": " > ".join(rec["names"])} for rec in ordered[:limit]]
 
 
 class NaverShoppingClient:
