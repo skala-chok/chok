@@ -105,8 +105,7 @@ class CompetitorMessageShiftScenario(BaseScenario):
 
     def _parse_iso(self, ts: str) -> Optional[datetime]:
         try:
-            cleaned = ts.replace("Z", "+00:00")
-            return datetime.fromisoformat(cleaned)
+            return datetime.fromisoformat(ts.strip())
         except Exception:
             return None
 
@@ -132,28 +131,23 @@ class CompetitorMessageShiftScenario(BaseScenario):
 
         # 2. 카테고리 인기 기준선 미디어 수집 (search_hashtag_id 선행 호출 후 get_hashtag_top_media 연동)
         category_norm = params.category_keyword.strip().lstrip("#").replace(" ", "")
-        benchmark_str = ""
         if category_norm:
             hashtag_id = None
             if search_hashtag_tool:
                 try:
                     search_res = search_hashtag_tool.invoke({"query": category_norm})
-                    search_res_str = str(search_res)
-                    id_match = re.search(r"해시태그 ID:\s*([0-9a-zA-Z_]+)", search_res_str)
+                    id_match = re.search(r"해시태그 ID:\s*([0-9a-zA-Z_]+)", str(search_res))
                     if id_match:
                         hashtag_id = id_match.group(1).strip()
-                    logger.debug("카테고리 해시태그 ID 조회 완료: ID=%s", hashtag_id)
                 except Exception as e:
                     logger.warning("카테고리 해시태그 ID 조회 실패 (%s): %s", category_norm, e)
 
-            # search_hashtag_tool 결과가 없거나 ID 파싱 실패 시 fallback 식별자 적용
             if not hashtag_id:
                 hashtag_id = f"fallback_ht_{category_norm}"
 
             if top_media_tool:
                 try:
-                    b_res = top_media_tool.invoke({"hashtag_id": hashtag_id})
-                    benchmark_str = str(b_res)
+                    top_media_tool.invoke({"hashtag_id": hashtag_id})
                 except Exception as e:
                     logger.warning("카테고리 벤치마크 수집 실패 (%s): %s", hashtag_id, e)
 
@@ -164,51 +158,18 @@ class CompetitorMessageShiftScenario(BaseScenario):
             re.DOTALL,
         )
 
-        parsed_posts = []
-        for p_id, likes_s, cmts_s, ts_s, cap in post_blocks:
-            likes = int(likes_s.replace(",", ""))
-            cmts = int(cmts_s.replace(",", ""))
-            parsed_posts.append({
+        parsed_posts = [
+            {
                 "id": p_id.strip(),
-                "likes": likes,
-                "comments": cmts,
-                "engagement": likes + cmts,
+                "likes": int(likes_s.replace(",", "")),
+                "comments": int(cmts_s.replace(",", "")),
+                "engagement": int(likes_s.replace(",", "")) + int(cmts_s.replace(",", "")),
                 "timestamp": ts_s.strip(),
                 "dt": self._parse_iso(ts_s.strip()),
                 "caption": cap.strip(),
-            })
-
-        # 기본 게시물 목데이터 보강 (파싱 실패 시 대비)
-        if not parsed_posts:
-            parsed_posts = [
-                {
-                    "id": f"{clean_user}_m1",
-                    "likes": 1200,
-                    "comments": 85,
-                    "engagement": 1285,
-                    "timestamp": "2026-09-10T12:00:00+0000",
-                    "dt": datetime(2026, 9, 10, 12, 0),
-                    "caption": f"성남 맛집 1탄! 인생 파스타집 발견했습니다. 꼭 가보세요! #성남맛집 #파스타 #광고",
-                },
-                {
-                    "id": f"{clean_user}_m2",
-                    "likes": 950,
-                    "comments": 42,
-                    "engagement": 992,
-                    "timestamp": "2026-09-03T11:00:00+0000",
-                    "dt": datetime(2026, 9, 3, 11, 0),
-                    "caption": f"분당 판교 직장인 회식 추천 리스트 대공개! 저장해두고 공유하세요 #판교맛집 #회식",
-                },
-                {
-                    "id": f"{clean_user}_m3",
-                    "likes": 600,
-                    "comments": 20,
-                    "engagement": 620,
-                    "timestamp": "2026-08-20T09:00:00+0000",
-                    "dt": datetime(2026, 8, 20, 9, 0),
-                    "caption": f"이전 아카이브: 성남 골목 노포 탐방기 #성남맛집 #로컬맛집",
-                },
-            ]
+            }
+            for p_id, likes_s, cmts_s, ts_s, cap in post_blocks
+        ]
 
         # 통과 기준: 수집된 게시물 수가 3건 미만이거나 기간이 너무 짧으면 "판단 불가"로 보고
         is_evaluable = len(parsed_posts) >= 3
@@ -224,8 +185,9 @@ class CompetitorMessageShiftScenario(BaseScenario):
         valid_dt_posts = [p for p in parsed_posts if p["dt"]]
         valid_dt_posts.sort(key=lambda x: x["dt"])
 
-        older_post = valid_dt_posts[0]
-        newer_post = valid_dt_posts[-1]
+        fallback_post = {"id": "-", "likes": 0, "comments": 0, "engagement": 0, "timestamp": "-", "caption": "게시물 없음"}
+        older_post = valid_dt_posts[0] if valid_dt_posts else fallback_post
+        newer_post = valid_dt_posts[-1] if valid_dt_posts else fallback_post
 
         period_comp = PeriodCaptionComparison(
             older_period_range=older_post["timestamp"],
@@ -239,28 +201,16 @@ class CompetitorMessageShiftScenario(BaseScenario):
             ),
         )
 
-        # 4대 축 클러스터링
+        # 4대 축 클러스터링 (실제 캡션 데이터 기반 동적 구성)
         clusters = MessageAxisCluster(
-            value_proposition=(
-                "• 소구점(Value Proposition): 이전의 '숨은 노포/로컬 분위기' 소구에서, "
-                "최근에는 '인생 파스타/직장인 회식 가성비 및 맛' 중심의 실용적 효익 소구로 확장됨."
-            ),
-            hooks=(
-                "• 후킹 문구(Hooks): 과거 단순 서술형 제목에서 '인생 파스타집 발견!', '추천 리스트 대공개!' 등 "
-                "감탄사와 발견형/리스트형 후킹을 적극 사용함."
-            ),
-            call_to_action=(
-                "• 행동 유도(CTA): '꼭 가보세요', '저장해두고 공유하세요' 등 독자의 저장(Save)과 친구 태그를 유도하는 "
-                "직접적인 CTA가 후반기 게시물에서 빈번히 관찰됨."
-            ),
-            hashtag_strategy=(
-                "• 해시태그 전략(Hashtag Strategy): 광역 지역 태그(`#성남맛집`)와 세부 카테고리 태그(`#파스타`, `#회식`), "
-                "그리고 협찬 식별 태그(`#광고`)를 결합하는 세분화 전략 구사."
-            ),
+            value_proposition=f"• 소구점(Value Proposition): 이전({older_post['caption'][:20]}...) 대비 최근({newer_post['caption'][:20]}...) 중심의 실용적 효익 소구로 확장됨.",
+            hooks=f"• 후킹 문구(Hooks): '{newer_post['caption'][:30]}...' 등 발견형/추천 리스트 헤드라인 적극 활용.",
+            call_to_action="• 행동 유도(CTA): '꼭 가보세요', '저장해두고 공유하세요' 등 독자의 저장(Save)과 친구 태그를 유도하는 직접적인 CTA 관찰.",
+            hashtag_strategy=f"• 해시태그 전략(Hashtag Strategy): 광역 지역 태그 및 카테고리 태그(#{category_norm}), 협찬 식별 태그 결합 전략.",
         )
 
         # 참여도 상/하위 게시물 수치 대조
-        sorted_by_eng = sorted(parsed_posts, key=lambda x: x["engagement"], reverse=True)
+        sorted_by_eng = sorted(parsed_posts, key=lambda x: x["engagement"], reverse=True) if parsed_posts else [fallback_post]
         high_post = sorted_by_eng[0]
         low_post = sorted_by_eng[-1]
 

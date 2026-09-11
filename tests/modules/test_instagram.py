@@ -15,7 +15,7 @@ from src.modules.instagram.tools import (
     get_competitor_profile,
 )
 from src.modules.instagram.guardrails import InstagramGuardrail
-from src.modules.instagram.context import InstagramContextProvider
+from src.modules.instagram.module import InstagramContextProvider
 from src.modules.instagram.client import InstagramApiClient
 
 

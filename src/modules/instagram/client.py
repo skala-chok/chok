@@ -5,7 +5,6 @@
 # ==============================================================================
 
 import logging
-import os
 import requests
 from typing import Any, Dict, Optional
 from src.config import settings
@@ -30,27 +29,15 @@ class InstagramApiClient:
 
     @property
     def access_token(self) -> str:
-        return (
-            self._access_token
-            or getattr(settings, "INSTAGRAM_ACCESS_TOKEN", None)
-            or os.getenv("INSTAGRAM_ACCESS_TOKEN", "")
-        )
+        return self._access_token or settings.INSTAGRAM_ACCESS_TOKEN or ""
 
     @property
     def user_id(self) -> str:
-        return (
-            self._user_id
-            or getattr(settings, "INSTAGRAM_USER_ID", None)
-            or os.getenv("INSTAGRAM_USER_ID", "")
-        )
+        return self._user_id or settings.INSTAGRAM_USER_ID or ""
 
     @property
     def api_version(self) -> str:
-        return (
-            self._api_version
-            or getattr(settings, "INSTAGRAM_API_VERSION", "v21.0")
-            or "v21.0"
-        )
+        return self._api_version or settings.INSTAGRAM_API_VERSION or "v26.0"
 
     @property
     def versioned_url(self) -> str:
@@ -170,53 +157,39 @@ class InstagramApiClient:
             logger.warning("[Rule 1-1] Instagram 해시태그 검색 API 장애 발생: %s -> 폴백 목 데이터 반환", e)
             return self._get_fallback_hashtag_search(query)
 
-    def get_hashtag_top_media(
+    def _get_hashtag_media(
         self,
         hashtag_id: str,
+        media_type: str,
+        is_recent: bool,
+        label: str,
         fields: Optional[str] = None,
     ) -> Dict[str, Any]:
+        if hashtag_id.startswith(("fallback_", "ht_mock")):
+            logger.info("모의/폴백 해시태그 ID(%s) 감지: 외부 API 호출을 생략하고 폴백 목 데이터를 반환합니다.", hashtag_id)
+            return self._get_fallback_hashtag_media(hashtag_id, is_recent=is_recent)
+
+        url = f"{self.versioned_url}/{hashtag_id}/{media_type}"
+        params = {
+            "user_id": self.user_id,
+            "fields": fields or "id,caption,like_count,comments_count,media_type,permalink,timestamp",
+            "access_token": self.access_token,
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.warning("[Rule 1-1] Instagram %s 조회 API 장애 발생: %s -> 폴백 목 데이터 반환", label, e)
+            return self._get_fallback_hashtag_media(hashtag_id, is_recent=is_recent)
+
+    def get_hashtag_top_media(self, hashtag_id: str, fields: Optional[str] = None) -> Dict[str, Any]:
         """해시태그 인기글(기준선) 조회 (GET /{hashtag-id}/top_media?user_id={ig-user-id})."""
-        if hashtag_id.startswith("fallback_") or hashtag_id.startswith("ht_mock"):
-            logger.info("모의/폴백 해시태그 ID(%s) 감지: 외부 API 호출을 생략하고 폴백 목 데이터를 반환합니다.", hashtag_id)
-            return self._get_fallback_hashtag_media(hashtag_id, is_recent=False)
+        return self._get_hashtag_media(hashtag_id, "top_media", is_recent=False, label="인기글", fields=fields)
 
-        url = f"{self.versioned_url}/{hashtag_id}/top_media"
-        params = {
-            "user_id": self.user_id,
-            "fields": fields or "id,caption,like_count,comments_count,media_type,permalink,timestamp",
-            "access_token": self.access_token,
-        }
-        try:
-            resp = requests.get(url, params=params, timeout=15)
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.RequestException as e:
-            logger.warning("[Rule 1-1] Instagram 인기글 조회 API 장애 발생: %s -> 폴백 목 데이터 반환", e)
-            return self._get_fallback_hashtag_media(hashtag_id, is_recent=False)
-
-    def get_hashtag_recent_media(
-        self,
-        hashtag_id: str,
-        fields: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    def get_hashtag_recent_media(self, hashtag_id: str, fields: Optional[str] = None) -> Dict[str, Any]:
         """해시태그 최신글(24h 현재온도) 조회 (GET /{hashtag-id}/recent_media?user_id={ig-user-id})."""
-        if hashtag_id.startswith("fallback_") or hashtag_id.startswith("ht_mock"):
-            logger.info("모의/폴백 해시태그 ID(%s) 감지: 외부 API 호출을 생략하고 폴백 목 데이터를 반환합니다.", hashtag_id)
-            return self._get_fallback_hashtag_media(hashtag_id, is_recent=True)
-
-        url = f"{self.versioned_url}/{hashtag_id}/recent_media"
-        params = {
-            "user_id": self.user_id,
-            "fields": fields or "id,caption,like_count,comments_count,media_type,permalink,timestamp",
-            "access_token": self.access_token,
-        }
-        try:
-            resp = requests.get(url, params=params, timeout=15)
-            resp.raise_for_status()
-            return resp.json()
-        except requests.exceptions.RequestException as e:
-            logger.warning("[Rule 1-1] Instagram 최신글 조회 API 장애 발생: %s -> 폴백 목 데이터 반환", e)
-            return self._get_fallback_hashtag_media(hashtag_id, is_recent=True)
+        return self._get_hashtag_media(hashtag_id, "recent_media", is_recent=True, label="최신글", fields=fields)
 
     def get_business_discovery(
         self,
